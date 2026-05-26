@@ -28,7 +28,8 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public List<PostDTO> getUserPosts(String userId, String currentUserId) {
-        User user = userRepository.findById(userId).orElseThrow();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
         return postRepository.findByUserOrderByCreatedAtDesc(user).stream()
                 .map(post -> convertToDTO(post, currentUserId))
                 .collect(Collectors.toList());
@@ -36,7 +37,9 @@ public class PostService {
 
     @Transactional
     public PostDTO createPost(PostDTO dto, String userId) {
-        User user = userRepository.findById(userId).orElseThrow();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+        
         Post post = Post.builder()
                 .user(user)
                 .restaurantName(dto.getRestaurantName())
@@ -52,7 +55,9 @@ public class PostService {
 
     @Transactional
     public void deletePost(String postId, String userId) {
-        Post post = postRepository.findById(postId).orElseThrow();
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new RuntimeException("Publicación no encontrada"));
+        
         if (!post.getUser().getId().equals(userId)) {
             throw new RuntimeException("No tienes permiso para eliminar esta publicación");
         }
@@ -72,7 +77,7 @@ public class PostService {
                 .rating(post.getRating())
                 .imageUrl(post.getImageUrl())
                 .likesCount(post.getLikedBy() != null ? post.getLikedBy().size() : 0)
-                .commentsCount(0) // Comentarios no implementados aún
+                .commentsCount(0)
                 .likedByMe(post.getLikedBy() != null && post.getLikedBy().stream()
                         .anyMatch(u -> u.getId().equals(currentUserId)))
                 .createdAt(post.getCreatedAt())

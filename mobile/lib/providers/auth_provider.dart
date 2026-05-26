@@ -100,6 +100,11 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateUser(Map<String, dynamic> json) {
+    _user = UserModel.fromJson(json);
+    notifyListeners();
+  }
+
   void _setLoading(bool v) {
     _loading = v;
     notifyListeners();

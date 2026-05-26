@@ -10,6 +10,8 @@ import '../../models/post_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../auth/login_screen.dart';
+import '../posts/post_detail_screen.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? userId;
@@ -159,7 +161,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          onPressed: () {},
+                          onPressed: () async {
+                            final updated = await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                            );
+                            if (updated == true) _loadData();
+                          },
                           child: const Text('Editar perfil'),
                         ),
                       )
@@ -205,15 +213,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     mainAxisSpacing: 4,
                   ),
                   delegate: SliverChildBuilderDelegate(
-                    (context, i) => ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: _posts[i].imageUrl,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) =>
-                            Container(color: AppColors.divider),
-                        errorWidget: (_, __, ___) =>
-                            Container(color: AppColors.divider),
+                    (context, i) => InkWell(
+                      onTap: () async {
+                        final deleted = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PostDetailScreen(post: _posts[i]),
+                          ),
+                        );
+                        if (deleted == true) _loadData();
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: CachedNetworkImage(
+                          imageUrl: _posts[i].imageUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) =>
+                              Container(color: AppColors.divider),
+                          errorWidget: (_, __, ___) =>
+                              Container(color: AppColors.divider),
+                        ),
                       ),
                     )
                         .animate(delay: Duration(milliseconds: 40 * i))
