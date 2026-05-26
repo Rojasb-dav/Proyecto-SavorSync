@@ -77,10 +77,15 @@ class _HomeScreenState extends State<HomeScreen> {
         buttonBackgroundColor: AppColors.primary,
         animationDuration: const Duration(milliseconds: 300),
         items: [
-          Icon(Icons.home_rounded, color: _tab == 0 ? Colors.white : AppColors.primary),
-          Icon(Icons.search_rounded, color: _tab == 1 ? Colors.white : AppColors.primary),
-          const Icon(Icons.add_rounded, color: Colors.white, size: 28),
-          Icon(Icons.person_rounded, color: _tab == 3 ? Colors.white : AppColors.primary),
+          Icon(Icons.home_rounded,
+              color: _tab == 0 ? Colors.white : AppColors.primary),
+          Icon(Icons.search_rounded,
+              color: _tab == 1 ? Colors.white : AppColors.primary),
+          const Center(
+            child: Icon(Icons.add_rounded, color: Colors.white, size: 32),
+          ),
+          Icon(Icons.person_rounded,
+              color: _tab == 3 ? Colors.white : AppColors.primary),
         ],
         onTap: (i) async {
           if (i == 2) {
