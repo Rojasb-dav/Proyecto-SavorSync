@@ -3,12 +3,14 @@ import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
 import '../../models/post_model.dart';
+import '../../providers/auth_provider.dart';
 import '../posts/create_post_screen.dart';
 import '../profile/profile_screen.dart';
 
@@ -72,11 +74,11 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.white,
         buttonBackgroundColor: AppColors.primary,
         animationDuration: const Duration(milliseconds: 300),
-        items: const [
-          Icon(Icons.home_rounded, color: AppColors.primary),
-          Icon(Icons.search_rounded, color: AppColors.primary),
-          Icon(Icons.add_rounded, color: Colors.white, size: 28),
-          Icon(Icons.person_rounded, color: AppColors.primary),
+        items: [
+          Icon(Icons.home_rounded, color: _tab == 0 ? Colors.white : AppColors.primary),
+          Icon(Icons.search_rounded, color: _tab == 1 ? Colors.white : AppColors.primary),
+          const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+          Icon(Icons.person_rounded, color: _tab == 3 ? Colors.white : AppColors.primary),
         ],
         onTap: (i) async {
           if (i == 2) {
@@ -153,7 +155,10 @@ class _FeedTab extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       itemCount: posts.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 16),
-                      itemBuilder: (_, i) => _PostCard(post: posts[i])
+                      itemBuilder: (_, i) => _PostCard(
+                        post: posts[i],
+                        onDeleted: onRefresh,
+                      )
                           .animate(delay: Duration(milliseconds: 80 * i))
                           .fadeIn(duration: 250.ms)
                           .slideY(begin: 0.15, curve: Curves.easeOutCubic),
@@ -168,7 +173,8 @@ class _FeedTab extends StatelessWidget {
 
 class _PostCard extends StatefulWidget {
   final PostModel post;
-  const _PostCard({required this.post});
+  final VoidCallback? onDeleted;
+  const _PostCard({required this.post, this.onDeleted});
 
   @override
   State<_PostCard> createState() => _PostCardState();
@@ -196,6 +202,9 @@ class _PostCardState extends State<_PostCard> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    final isMe = auth.user?.id == _post.userId;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -230,10 +239,54 @@ class _PostCardState extends State<_PostCard> {
             ),
             title: Text(_post.fullName, style: AppTextStyles.username),
             subtitle: Text('@${_post.username}', style: AppTextStyles.caption),
-            trailing: IconButton(
-              icon: const Icon(Icons.more_horiz_rounded),
-              onPressed: () {},
-            ),
+            trailing: isMe
+                ? PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_horiz_rounded),
+                    onSelected: (val) async {
+                      if (val == 'delete') {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Eliminar publicación'),
+                            content: const Text(
+                                '¿Estás seguro de que quieres eliminar esta reseña?'),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancelar')),
+                              TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Eliminar',
+                                      style: TextStyle(color: Colors.red))),
+                            ],
+                          ),
+                        );
+
+                        if (confirm == true) {
+                          try {
+                            await ApiService().dio.delete('/api/posts/${_post.id}');
+                            widget.onDeleted?.call();
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Error al eliminar')),
+                            );
+                          }
+                        }
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Eliminar', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.more_horiz_rounded),
+                    onPressed: () {},
+                  ),
           ),
           GestureDetector(
             onDoubleTap: _toggleLike,

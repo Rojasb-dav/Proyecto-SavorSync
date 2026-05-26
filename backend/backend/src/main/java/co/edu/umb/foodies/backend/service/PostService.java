@@ -50,6 +50,15 @@ public class PostService {
         return convertToDTO(post, userId);
     }
 
+    @Transactional
+    public void deletePost(String postId, String userId) {
+        Post post = postRepository.findById(postId).orElseThrow();
+        if (!post.getUser().getId().equals(userId)) {
+            throw new RuntimeException("No tienes permiso para eliminar esta publicación");
+        }
+        postRepository.delete(post);
+    }
+
     private PostDTO convertToDTO(Post post, String currentUserId) {
         return PostDTO.builder()
                 .id(post.getId())

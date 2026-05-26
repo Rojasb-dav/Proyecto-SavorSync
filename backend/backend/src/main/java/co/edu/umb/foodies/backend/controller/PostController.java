@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.util.List;
 
@@ -34,6 +35,13 @@ public class PostController {
     public ResponseEntity<PostDTO> createPost(@RequestBody PostDTO postDTO, HttpServletRequest request) {
         String userId = getUserIdFromRequest(request);
         return ResponseEntity.ok(postService.createPost(postDTO, userId));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deletePost(@PathVariable String id, HttpServletRequest request) {
+        String userId = getUserIdFromRequest(request);
+        postService.deletePost(id, userId);
+        return ResponseEntity.ok().build();
     }
 
     private String getUserIdFromRequest(HttpServletRequest request) {
