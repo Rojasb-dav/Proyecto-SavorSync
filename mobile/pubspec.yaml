@@ -20,6 +20,7 @@ dependencies:
   shimmer: ^3.0.0
   curved_navigation_bar: ^1.0.6
   flutter_rating_bar: ^4.0.1
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

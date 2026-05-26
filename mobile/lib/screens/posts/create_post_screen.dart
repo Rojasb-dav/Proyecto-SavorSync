@@ -1,5 +1,8 @@
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
@@ -17,22 +20,59 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final _restaurantController = TextEditingController();
   final _addressController = TextEditingController();
   final _contentController = TextEditingController();
-  final _imageUrlController = TextEditingController();
+  
+  File? _image;
+  final _picker = ImagePicker();
   double _rating = 3.0;
   bool _loading = false;
 
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final pickedFile = await _picker.pickImage(
+        source: source,
+        maxWidth: 1000,
+        maxHeight: 1000,
+        imageQuality: 85,
+      );
+      if (pickedFile != null) {
+        setState(() => _image = File(pickedFile.path));
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_image == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor selecciona una foto')),
+      );
+      return;
+    }
 
     setState(() => _loading = true);
     try {
+      // 1. Subir la imagen primero
+      String fileName = _image!.path.split('/').last;
+      FormData formData = FormData.fromMap({
+        "file": await MultipartFile.fromFile(_image!.path, filename: fileName),
+      });
+
+      final uploadResponse = await ApiService().dio.post('/api/files/upload', data: formData);
+      final String relativeUrl = uploadResponse.data['url'];
+      // Convertimos a URL absoluta para que la app pueda verla (IP del backend)
+      final String absoluteImageUrl = ApiService.baseUrl + relativeUrl;
+
+      // 2. Crear el post con la URL de la imagen que nos devolvió el servidor
       await ApiService().dio.post('/api/posts', data: {
         'restaurantName': _restaurantController.text,
         'restaurantAddress': _addressController.text,
         'content': _contentController.text,
         'rating': _rating,
-        'imageUrl': _imageUrlController.text,
+        'imageUrl': absoluteImageUrl,
       });
+
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
@@ -73,6 +113,32 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              GestureDetector(
+                onTap: () => _showPickerOptions(),
+                child: Container(
+                  height: 200,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey[300]!),
+                    image: _image != null
+                        ? DecorationImage(image: FileImage(_image!), fit: BoxFit.cover)
+                        : null,
+                  ),
+                  child: _image == null
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.add_a_photo_rounded, size: 40, color: AppColors.secondary),
+                            const SizedBox(height: 8),
+                            Text('Toca para añadir una foto', style: AppTextStyles.subtle),
+                          ],
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 24),
               Text('Restaurante', style: AppTextStyles.title),
               const SizedBox(height: 8),
               TextFormField(
@@ -113,17 +179,36 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     hintText: '¿Qué tal estuvo la comida?'),
                 validator: (v) => v!.isEmpty ? 'Requerido' : null,
               ),
-              const SizedBox(height: 16),
-              Text('URL de la foto', style: AppTextStyles.title),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _imageUrlController,
-                decoration: const InputDecoration(
-                    hintText: 'https://ejemplo.com/foto.jpg'),
-                validator: (v) => v!.isEmpty ? 'Requerido' : null,
-              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showPickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Galería'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: const Text('Cámara'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+          ],
         ),
       ),
     );

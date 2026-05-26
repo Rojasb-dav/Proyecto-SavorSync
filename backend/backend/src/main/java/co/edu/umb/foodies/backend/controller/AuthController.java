@@ -38,4 +38,16 @@ public class AuthController {
         authService.logout(token);
         return ResponseEntity.ok(Map.of("message", "Sesión cerrada"));
     }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@RequestBody Map<String, String> req) {
+        authService.forgotPassword(req.get("email"));
+        return ResponseEntity.ok(Map.of("message", "Si el correo existe, se envió un código de 6 dígitos"));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, String>> resetPassword(@RequestBody Map<String, String> req) {
+        authService.resetPassword(req.get("email"), req.get("code"), req.get("newPassword"));
+        return ResponseEntity.ok(Map.of("message", "Contraseña actualizada con éxito"));
+    }
 }
