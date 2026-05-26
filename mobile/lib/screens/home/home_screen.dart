@@ -199,8 +199,8 @@ class _EmptyFeed extends StatelessWidget {
               const SizedBox(height: 24),
               Text('¡Bienvenido a SavorSync!', style: AppTextStyles.headline),
               const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 40),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
                 child: Text(
                   'Aún no hay publicaciones en tu feed. ¡Sé el primero en compartir tu experiencia culinaria!',
                   textAlign: TextAlign.center,
