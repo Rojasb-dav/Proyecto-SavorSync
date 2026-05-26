@@ -23,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
+  final GlobalKey<CurvedNavigationBarState> _navKey = GlobalKey();
   final List<PostModel> _posts = [];
   bool _loading = true;
 
@@ -68,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppColors.background,
       body: pages[_tab],
       bottomNavigationBar: CurvedNavigationBar(
+        key: _navKey,
         index: _tab,
         height: 60,
         backgroundColor: Colors.transparent,
@@ -77,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
         items: [
           Icon(Icons.home_rounded, color: _tab == 0 ? Colors.white : AppColors.primary),
           Icon(Icons.search_rounded, color: _tab == 1 ? Colors.white : AppColors.primary),
-          Icon(Icons.add_rounded, color: _tab == 2 ? Colors.white : AppColors.primary, size: 28),
+          const Icon(Icons.add_rounded, color: Colors.white, size: 28),
           Icon(Icons.person_rounded, color: _tab == 3 ? Colors.white : AppColors.primary),
         ],
         onTap: (i) async {
@@ -86,6 +88,10 @@ class _HomeScreenState extends State<HomeScreen> {
               context,
               MaterialPageRoute(builder: (_) => const CreatePostScreen()),
             );
+            
+            // Regresamos la barra al tab que estaba activo antes de pulsar el "+"
+            _navKey.currentState?.setPage(_tab);
+
             if (refresh == true) {
               _loadPosts();
             }
