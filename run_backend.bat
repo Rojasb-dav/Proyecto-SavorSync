@@ -1,0 +1,9 @@
+@echo off
+echo [SavorSync] Deteniendo procesos de Java bloqueadores...
+taskkill /F /IM java.exe /T 2>nul
+echo [SavorSync] Limpiando carpeta build del Backend...
+cd backend/backend
+call gradlew clean
+echo [SavorSync] Iniciando Backend Spring Boot...
+call gradlew bootRun
+pause
