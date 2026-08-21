@@ -35,6 +35,9 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final JavaMailSender mailSender;
 
+    @org.springframework.beans.factory.annotation.Value("${spring.mail.username}")
+    private String senderEmail;
+
     @Transactional
     public AuthResponse register(RegisterRequest req, HttpServletRequest httpReq) {
         if (userRepository.existsByEmail(req.getEmail())) {
@@ -106,7 +109,7 @@ public class AuthService {
                     .build());
 
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom("SavorSync <" + "tu_correo@gmail.com" + ">");
+            message.setFrom("SavorSync <" + senderEmail + ">");
             message.setTo(email);
             message.setSubject("Código de Recuperación - SavorSync");
             message.setText("Hola " + user.getFullName() + ",\n\n" +

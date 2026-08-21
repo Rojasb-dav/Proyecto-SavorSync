@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "users")
+@Table(name = "clientes")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,27 +17,27 @@ import java.util.UUID;
 public class User {
 
     public enum Role {
-        foodie, restaurant_admin, moderator
+        foodie, restaurant_admin
     }
 
     @Id
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
-    @Column(unique = true, nullable = false, length = 150)
+    @Column(unique = true, nullable = false, length = 191)
     private String email;
 
-    @Column(unique = true, nullable = false, length = 60)
+    @Column(unique = true, nullable = false, length = 50)
     private String username;
 
     @Column(nullable = false, length = 255)
     private String password;
 
-    @Column(name = "full_name", length = 150)
+    @Column(name = "full_name", nullable = false, length = 100)
     private String fullName;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "ENUM('foodie','restaurant_admin','moderator')")
+    @Column(name = "rol", nullable = false, columnDefinition = "ENUM('foodie','restaurant_admin')")
     private Role role;
 
     @Column(name = "avatar_url", length = 500)
@@ -46,7 +46,7 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String bio;
 
-    @Column(length = 30)
+    @Column(length = 20)
     private String phone;
 
     @Column(name = "is_active", nullable = false)
@@ -63,9 +63,9 @@ public class User {
 
     @ManyToMany
     @JoinTable(
-        name = "user_follows",
-        joinColumns = @JoinColumn(name = "follower_id"),
-        inverseJoinColumns = @JoinColumn(name = "following_id")
+        name = "seguidores",
+        joinColumns = @JoinColumn(name = "seguidor_id"),
+        inverseJoinColumns = @JoinColumn(name = "seguido_id")
     )
     private Set<User> following;
 

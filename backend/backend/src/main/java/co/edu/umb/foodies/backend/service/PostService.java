@@ -44,7 +44,7 @@ public class PostService {
                 .user(user)
                 .restaurantName(dto.getRestaurantName())
                 .restaurantAddress(dto.getRestaurantAddress())
-                .content(dto.getContent())
+                .contenido(dto.getContent())
                 .rating(dto.getRating())
                 .imageUrl(dto.getImageUrl())
                 .build();
@@ -73,7 +73,7 @@ public class PostService {
                 .userAvatarUrl(post.getUser().getAvatarUrl())
                 .restaurantName(post.getRestaurantName())
                 .restaurantAddress(post.getRestaurantAddress())
-                .content(post.getContent())
+                .content(post.getContenido())
                 .rating(post.getRating())
                 .imageUrl(post.getImageUrl())
                 .likesCount(post.getLikedBy() != null ? post.getLikedBy().size() : 0)

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "auth_sessions")
+@Table(name = "sesiones_cliente")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -16,21 +16,21 @@ import java.util.UUID;
 public class AuthSession {
 
     public enum Platform {
-        mobile, web_admin, web_restaurant
+        mobile, web_restaurante
     }
 
     @Id
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "user_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, nullable = false)
     private String userId;
 
     @Column(name = "session_token", nullable = false, length = 2000)
     private String sessionToken;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "ENUM('mobile','web_admin','web_restaurant')")
+    @Column(name = "plataforma", nullable = false, columnDefinition = "ENUM('mobile','web_restaurante')")
     private Platform platform;
 
     @Column(name = "ip_address", length = 45)
@@ -39,7 +39,7 @@ public class AuthSession {
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
-    @Column(name = "is_active", nullable = false)
+    @Column(name = "activa", nullable = false)
     private Boolean isActive;
 
     @Column(name = "created_at", updatable = false)

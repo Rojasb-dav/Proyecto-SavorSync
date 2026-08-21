@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "posts")
+@Table(name = "publicaciones")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,23 +21,40 @@ public class Post {
     private String id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "cliente_id", nullable = false)
     private User user;
 
-    @Column(name = "restaurant_name", nullable = false, length = 150)
+    @Column(name = "nombre_restaurante", nullable = false, length = 150)
     private String restaurantName;
 
-    @Column(name = "restaurant_address", length = 255)
+    @Column(name = "direccion_restaurante", length = 255)
     private String restaurantAddress;
 
-    @Column(columnDefinition = "TEXT")
-    private String content;
+    @Column(columnDefinition = "TEXT", nullable = false)
+    private String contenido;
 
-    @Column(nullable = false)
+    @Column(name = "calificacion", nullable = false)
     private Double rating;
 
-    @Column(name = "image_url", length = 500)
+    @Column(name = "url_imagen", length = 500)
     private String imageUrl;
+
+    @Column(name = "conteo_likes")
+    private Integer likesCount;
+
+    @Column(name = "conteo_comentarios")
+    private Integer commentsCount;
+
+    @Column(name = "es_publica")
+    private Boolean isPublic;
+
+    public enum PostStatus {
+        borrador, publicada, oculta, en_revision
+    }
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado", columnDefinition = "ENUM('borrador','publicada','oculta','en_revision')")
+    private PostStatus status;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -47,15 +64,19 @@ public class Post {
 
     @ManyToMany
     @JoinTable(
-        name = "post_likes",
-        joinColumns = @JoinColumn(name = "post_id"),
-        inverseJoinColumns = @JoinColumn(name = "user_id")
+        name = "likes",
+        joinColumns = @JoinColumn(name = "publicacion_id"),
+        inverseJoinColumns = @JoinColumn(name = "cliente_id")
     )
     private Set<User> likedBy;
 
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID().toString();
+        if (likesCount == null) likesCount = 0;
+        if (commentsCount == null) commentsCount = 0;
+        if (isPublic == null) isPublic = true;
+        if (status == null) status = PostStatus.publicada;
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;
