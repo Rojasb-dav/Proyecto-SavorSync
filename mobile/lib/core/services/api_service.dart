@@ -42,7 +42,11 @@ class ApiService {
   /// - Emulador Android:  http://10.0.2.2:8080
   /// - iOS Simulator:     http://localhost:8080
   /// - Dispositivo real:  http://<IP_LAN_DEL_PC>:8080  (ej. 192.168.1.50)
-  static const String baseUrl = 'http://192.168.2.12:8080';
+  // Cuando usas el cable con adb reverse
+  static const String baseUrl = 'http://localhost:8080';
+  // Alterna entre estas IPs según la red donde estés (WIFI):
+  // const String baseUrl = 'http://172.20.3.3:8080'; // Red Actual
+  // static const String baseUrl = 'http://192.168.2.12:8080'; // Red Casa
 
   late final Dio _dio;
   final TokenStorage _tokenStorage = TokenStorage();
