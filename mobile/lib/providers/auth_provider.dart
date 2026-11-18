@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/services/auth_service.dart';
@@ -47,8 +47,8 @@ class AuthProvider extends ChangeNotifier {
       _status = AuthStatus.authenticated;
       _error = null;
       return true;
-    } on DioException catch (e) {
-      _error = _extractError(e);
+    } on FirebaseAuthException catch (e) {
+      _error = _extractFirebaseAuthError(e);
       return false;
     } catch (e) {
       _error = 'Error inesperado: $e';
@@ -63,6 +63,7 @@ class AuthProvider extends ChangeNotifier {
     required String username,
     required String password,
     String? fullName,
+    String role = 'foodie',
   }) async {
     _setLoading(true);
     try {
@@ -71,13 +72,14 @@ class AuthProvider extends ChangeNotifier {
         username: username,
         password: password,
         fullName: fullName,
+        role: role,
       );
       _user = result.user;
       _status = AuthStatus.authenticated;
       _error = null;
       return true;
-    } on DioException catch (e) {
-      _error = _extractError(e);
+    } on FirebaseAuthException catch (e) {
+      _error = _extractFirebaseAuthError(e);
       return false;
     } catch (e) {
       _error = 'Error inesperado: $e';
@@ -110,15 +112,21 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  String _extractError(DioException e) {
-    final data = e.response?.data;
-    if (data is Map && data['message'] != null) {
-      return data['message'].toString();
+  String _extractFirebaseAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'user-not-found':
+        return 'No existe una cuenta registrada con este correo.';
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Contraseña o correo incorrectos.';
+      case 'email-already-in-use':
+        return 'Este correo ya está registrado en la plataforma.';
+      case 'invalid-email':
+        return 'El formato del correo electrónico no es válido.';
+      case 'weak-password':
+        return 'La contraseña debe tener al menos 6 caracteres.';
+      default:
+        return e.message ?? 'Error de autenticación en Firebase.';
     }
-    if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.connectionError) {
-      return 'No se pudo conectar al servidor. Verifica tu red.';
-    }
-    return e.message ?? 'Error de autenticación';
   }
 }

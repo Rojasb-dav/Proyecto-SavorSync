@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../providers/auth_provider.dart';
-import '../home/home_screen.dart';
+import '../shell/role_based_shell.dart';
 import 'forgot_password_screen.dart';
 import 'register_screen.dart';
 
@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const RoleBasedShell()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(

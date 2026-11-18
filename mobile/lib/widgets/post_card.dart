@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -7,9 +8,9 @@ import 'package:shimmer/shimmer.dart';
 
 import '../core/constants/colors.dart';
 import '../core/constants/text_styles.dart';
-import '../core/services/api_service.dart';
 import '../models/post_model.dart';
 import '../providers/auth_provider.dart';
+import 'comments_modal.dart';
 
 class PostCard extends StatefulWidget {
   final PostModel post;
@@ -25,19 +26,49 @@ class _PostCardState extends State<PostCard> {
   bool _expanded = false;
   bool _likeBurst = false;
 
-  void _toggleLike() {
+  Future<void> _toggleLike() async {
+    final user = context.read<AuthProvider>().user;
+    final newLiked = !_post.likedByMe;
+    final newCount = newLiked ? _post.likesCount + 1 : _post.likesCount - 1;
+
     setState(() {
       _post = _post.copyWith(
-        likedByMe: !_post.likedByMe,
-        likesCount: _post.likedByMe ? _post.likesCount - 1 : _post.likesCount + 1,
+        likedByMe: newLiked,
+        likesCount: newCount < 0 ? 0 : newCount,
       );
-      if (_post.likedByMe) _likeBurst = true;
+      if (newLiked) _likeBurst = true;
     });
+
     if (_likeBurst) {
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) setState(() => _likeBurst = false);
       });
     }
+
+    try {
+      final postRef = FirebaseFirestore.instance.collection('posts').doc(_post.id);
+      await postRef.update({
+        'likesCount': FieldValue.increment(newLiked ? 1 : -1),
+      });
+
+      if (user != null) {
+        final likeDoc = postRef.collection('likes').doc(user.id);
+        if (newLiked) {
+          await likeDoc.set({'userId': user.id, 'createdAt': FieldValue.serverTimestamp()});
+        } else {
+          await likeDoc.delete();
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _openComments() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CommentsModal(postId: _post.id),
+    );
   }
 
   @override
@@ -104,7 +135,7 @@ class _PostCardState extends State<PostCard> {
 
                         if (confirm == true) {
                           try {
-                            await ApiService().dio.delete('/api/posts/${_post.id}');
+                            await FirebaseFirestore.instance.collection('posts').doc(_post.id).delete();
                             widget.onDeleted?.call();
                           } catch (e) {
                             if (!context.mounted) return;
@@ -238,7 +269,7 @@ class _PostCardState extends State<PostCard> {
                     const SizedBox(width: 16),
                     _IconAction(
                       icon: Icons.mode_comment_outlined,
-                      onTap: () {},
+                      onTap: _openComments,
                     ),
                     const SizedBox(width: 6),
                     Text('${_post.commentsCount}', style: AppTextStyles.caption),

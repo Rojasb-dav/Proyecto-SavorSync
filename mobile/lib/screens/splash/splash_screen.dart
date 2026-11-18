@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/colors.dart';
 import '../../providers/auth_provider.dart';
 import '../auth/login_screen.dart';
-import '../home/home_screen.dart';
+import '../shell/role_based_shell.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -33,7 +33,7 @@ class _SplashScreenState extends State<SplashScreen> {
     }
     if (!mounted) return;
     final next = auth.status == AuthStatus.authenticated
-        ? const HomeScreen()
+        ? const RoleBasedShell()
         : const LoginScreen();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => next),

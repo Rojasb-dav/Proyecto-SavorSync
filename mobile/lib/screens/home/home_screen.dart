@@ -1,19 +1,20 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
-import '../../core/services/api_service.dart';
 import '../../models/post_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/post_card.dart';
+import '../map/restaurant_map_screen.dart';
 import '../posts/create_post_screen.dart';
 import '../profile/profile_screen.dart';
+import '../search/search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,10 +38,25 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadPosts() async {
     setState(() => _loading = true);
     try {
-      final response = await ApiService().dio.get('/api/posts');
-      final List data = response.data;
-      final posts = data.map((e) => PostModel.fromJson(e)).toList();
-      
+      final snapshot = await FirebaseFirestore.instance
+          .collection('posts')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      final posts = snapshot.docs.map((doc) {
+        final data = doc.data();
+        final createdAtField = data['createdAt'];
+        DateTime dt = DateTime.now();
+        if (createdAtField is Timestamp) {
+          dt = createdAtField.toDate();
+        }
+        return PostModel.fromJson({
+          'id': doc.id,
+          ...data,
+          'createdAt': dt.toIso8601String(),
+        });
+      }).toList();
+
       if (!mounted) return;
       setState(() {
         _posts
@@ -52,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al cargar publicaciones')),
+        SnackBar(content: Text('Error al cargar publicaciones: $e')),
       );
     }
   }
@@ -61,13 +77,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final pages = [
       _FeedTab(loading: _loading, posts: _posts, onRefresh: _loadPosts),
-      const _PlaceholderTab(icon: Icons.search_rounded, title: 'Buscar'),
+      const SearchScreen(),
       const _PlaceholderTab(icon: Icons.add_rounded, title: 'Publicar'),
-      const _PlaceholderTab(
-        icon: Icons.location_on_rounded,
-        title: 'Ubicaciones',
-        message: 'Estamos trabajando en el mapa de restaurantes.',
-      ),
+      const RestaurantMapScreen(),
       const ProfileScreen(),
     ];
 

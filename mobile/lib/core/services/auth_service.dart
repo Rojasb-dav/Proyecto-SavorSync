@@ -1,8 +1,8 @@
-import 'package:dio/dio.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../models/user_model.dart';
 import '../utils/token_storage.dart';
-import 'api_service.dart';
 
 class AuthResult {
   final String token;
@@ -11,15 +11,26 @@ class AuthResult {
 }
 
 class AuthService {
-  final Dio _dio = ApiService().dio;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TokenStorage _tokenStorage = TokenStorage();
 
   Future<AuthResult> login(String email, String password) async {
-    final res = await _dio.post('/api/auth/login', data: {
-      'email': email,
-      'password': password,
-    });
-    return _handleAuthResponse(res.data as Map<String, dynamic>);
+    final creds = await _auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password.trim(),
+    );
+    final uid = creds.user!.uid;
+    final idToken = await creds.user!.getIdToken() ?? uid;
+
+    final doc = await _firestore.collection('users').doc(uid).get();
+    final data = doc.data() ?? {};
+    final user = UserModel.fromJson({'id': uid, ...data});
+
+    await _tokenStorage.saveToken(idToken);
+    await _tokenStorage.saveUserId(uid);
+
+    return AuthResult(token: idToken, user: user);
   }
 
   Future<AuthResult> register({
@@ -27,36 +38,46 @@ class AuthService {
     required String username,
     required String password,
     String? fullName,
+    String role = 'foodie',
   }) async {
-    final res = await _dio.post('/api/auth/register', data: {
-      'email': email,
-      'username': username,
-      'password': password,
-      if (fullName != null) 'fullName': fullName,
-    });
-    return _handleAuthResponse(res.data as Map<String, dynamic>);
+    final creds = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password.trim(),
+    );
+    final uid = creds.user!.uid;
+    final idToken = await creds.user!.getIdToken() ?? uid;
+
+    final userData = {
+      'id': uid,
+      'email': email.trim(),
+      'username': username.trim(),
+      'fullName': fullName?.trim(),
+      'role': role,
+      'avatarUrl': null,
+      'bio': '',
+      'followersCount': 0,
+      'followingCount': 0,
+      'postsCount': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    await _firestore.collection('users').doc(uid).set(userData);
+
+    final user = UserModel.fromJson(userData);
+    await _tokenStorage.saveToken(idToken);
+    await _tokenStorage.saveUserId(uid);
+
+    return AuthResult(token: idToken, user: user);
   }
 
   Future<void> logout() async {
-    try {
-      await _dio.post('/api/auth/logout');
-    } catch (_) {
-      // ignorar errores de red en logout
-    } finally {
-      await _tokenStorage.clear();
-    }
+    await _auth.signOut();
+    await _tokenStorage.clear();
   }
 
   Future<UserModel> fetchUserById(String id) async {
-    final res = await _dio.get('/api/users/$id');
-    return UserModel.fromJson(res.data as Map<String, dynamic>);
-  }
-
-  Future<AuthResult> _handleAuthResponse(Map<String, dynamic> data) async {
-    final token = data['token'] as String;
-    final user = UserModel.fromJson(data['user'] as Map<String, dynamic>);
-    await _tokenStorage.saveToken(token);
-    await _tokenStorage.saveUserId(user.id);
-    return AuthResult(token: token, user: user);
+    final doc = await _firestore.collection('users').doc(id).get();
+    final data = doc.data() ?? {};
+    return UserModel.fromJson({'id': id, ...data});
   }
 }

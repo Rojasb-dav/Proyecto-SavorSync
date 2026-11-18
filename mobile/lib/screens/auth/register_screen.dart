@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../providers/auth_provider.dart';
-import '../home/home_screen.dart';
+import '../shell/role_based_shell.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -20,6 +20,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  String _selectedRole = 'foodie';
   bool _obscure = true;
 
   @override
@@ -39,11 +40,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       username: _usernameCtrl.text.trim(),
       password: _passwordCtrl.text,
       fullName: _fullNameCtrl.text.trim(),
+      role: _selectedRole,
     );
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const RoleBasedShell()),
         (_) => false,
       );
     } else {
@@ -99,6 +101,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 14),
                 _animated(
                   delay: 200,
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedRole,
+                    decoration: const InputDecoration(
+                      hintText: 'Tipo de cuenta',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'foodie',
+                        child: Text('Comensal (Foodie)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'restaurant_admin',
+                        child: Text('Administrador de Restaurante'),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setState(() => _selectedRole = val);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _animated(
+                  delay: 260,
                   child: TextFormField(
                     controller: _usernameCtrl,
                     textInputAction: TextInputAction.next,

@@ -1,16 +1,18 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
-import '../../core/services/api_service.dart';
 import '../../models/post_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
+import '../admin/restaurant_admin_dashboard.dart';
 import '../auth/login_screen.dart';
 import '../posts/post_detail_screen.dart';
+import '../pqrs/create_pqrs_screen.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -40,14 +42,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (targetId == null) return;
 
     try {
-      final userRes = await ApiService().dio.get('/api/users/$targetId');
-      final postsRes = await ApiService().dio.get('/api/posts/user/$targetId');
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(targetId).get();
+      final postsQuery = await FirebaseFirestore.instance
+          .collection('posts')
+          .where('userId', isEqualTo: targetId)
+          .get();
+
+      final userData = userDoc.data() ?? {};
+      final postsList = postsQuery.docs.map((doc) {
+        final data = doc.data();
+        final createdAtField = data['createdAt'];
+        DateTime dt = DateTime.now();
+        if (createdAtField is Timestamp) {
+          dt = createdAtField.toDate();
+        }
+        return PostModel.fromJson({
+          'id': doc.id,
+          ...data,
+          'createdAt': dt.toIso8601String(),
+        });
+      }).toList();
 
       if (!mounted) return;
       setState(() {
-        _user = UserModel.fromJson(userRes.data);
-        final List postsData = postsRes.data;
-        _posts = postsData.map((e) => PostModel.fromJson(e)).toList();
+        _user = UserModel.fromJson({'id': targetId, ...userData});
+        _posts = postsList;
         _loading = false;
       });
     } catch (e) {
@@ -149,7 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 18),
-                    if (isMe)
+                    if (isMe) ...[
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
@@ -170,7 +189,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           },
                           child: const Text('Editar perfil'),
                         ),
-                      )
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppColors.divider),
+                            foregroundColor: AppColors.textPrimary,
+                            minimumSize: const Size.fromHeight(46),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const CreatePqrsScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.help_outline_rounded, color: AppColors.primary),
+                          label: const Text('Soporte PQRS'),
+                        ),
+                      ),
+                      if (user.role == 'restaurant_admin') ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              minimumSize: const Size.fromHeight(46),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const RestaurantAdminDashboard(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.storefront_rounded),
+                            label: const Text('Panel de Mi Restaurante'),
+                          ),
+                        ),
+                      ],
+                    ]
                     else
                       SizedBox(
                         width: double.infinity,

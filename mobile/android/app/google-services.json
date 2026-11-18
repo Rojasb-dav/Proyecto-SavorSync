@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "650948498734",
+    "project_id": "savorsync-a9b06",
+    "storage_bucket": "savorsync-a9b06.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:650948498734:android:60ca08513482f3efb1d6bf",
+        "android_client_info": {
+          "package_name": "co.edu.umb.savorsync"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "650948498734-qglajlh461ik6viduaheth7c0a4n8au3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "co.edu.umb.savorsync",
+            "certificate_hash": "2a2106183965b3aeea103cc2a194544527222e6c"
+          }
+        },
+        {
+          "client_id": "650948498734-lfpnh0ab4u6prgcvmac0ji4v617octle.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBllc-Xiy95Ohsuy8xvUu4qNGvFShoQ63o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "650948498734-lfpnh0ab4u6prgcvmac0ji4v617octle.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
