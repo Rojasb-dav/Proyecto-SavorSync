@@ -3,7 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
@@ -19,6 +21,8 @@ class RestaurantMapScreen extends StatefulWidget {
 
 class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
   RestaurantModel? _selectedRestaurant;
+  Position? _currentPosition;
+  static const LatLng _bogotaCenter = LatLng(4.6533, -74.0621);
 
   final List<RestaurantModel> _seedRestaurants = const [
     RestaurantModel(
@@ -72,7 +76,73 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _initUserLocation();
+  }
+
+  Future<void> _initUserLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      final pos = await Geolocator.getCurrentPosition();
+      if (mounted) {
+        setState(() => _currentPosition = pos);
+      }
+    } catch (e) {
+      debugPrint('Error obteniendo ubicación GPS: $e');
+    }
+  }
+
+  String _calculateDistanceStr(RestaurantModel r) {
+    final userLat = _currentPosition?.latitude ?? _bogotaCenter.latitude;
+    final userLng = _currentPosition?.longitude ?? _bogotaCenter.longitude;
+
+    final meters = Geolocator.distanceBetween(
+      userLat,
+      userLng,
+      r.latitude,
+      r.longitude,
+    );
+
+    if (meters < 1000) {
+      return '${meters.toInt()} m';
+    } else {
+      return '${(meters / 1000).toStringAsFixed(1)} km';
+    }
+  }
+
+  Future<void> _openExternalNavigation(RestaurantModel r) async {
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${r.latitude},${r.longitude}');
+    try {
+      if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo abrir mapas: $e')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final LatLng userLatLng = _currentPosition != null
+        ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+        : _bogotaCenter;
+
     return Scaffold(
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('restaurants').snapshots(),
@@ -81,12 +151,16 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
           if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
             restaurants = snapshot.data!.docs
                 .map((doc) => RestaurantModel.fromJson({'id': doc.id, ...doc.data()}))
+                .where((r) {
+                  final st = r.status.toLowerCase();
+                  return st == 'activo' || st == 'active';
+                })
                 .toList();
           } else {
             restaurants = _seedRestaurants;
           }
 
-          final markers = restaurants.map((r) {
+          final restMarkers = restaurants.map((r) {
             return Marker(
               point: LatLng(r.latitude, r.longitude),
               width: 120,
@@ -117,12 +191,37 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
             );
           }).toList();
 
+          // Marcador del usuario GPS
+          Marker? userMarker;
+          if (_currentPosition != null) {
+            userMarker = Marker(
+              point: userLatLng,
+              width: 50,
+              height: 50,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.blue, width: 2),
+                ),
+                child: const Icon(Icons.my_location_rounded, color: Colors.blue, size: 26),
+              ),
+            );
+          }
+
+          final allMarkers = [...restMarkers, if (userMarker != null) userMarker];
+
+          // Puntos de la ruta
+          final List<LatLng> routePoints = _selectedRestaurant != null
+              ? [userLatLng, LatLng(_selectedRestaurant!.latitude, _selectedRestaurant!.longitude)]
+              : [];
+
           return Stack(
             children: [
               FlutterMap(
                 options: MapOptions(
-                  initialCenter: const LatLng(4.6533, -74.0621), // Bogotá, Colombia
-                  initialZoom: 13.0,
+                  initialCenter: userLatLng,
+                  initialZoom: 13.5,
                   onTap: (_, __) {
                     setState(() => _selectedRestaurant = null);
                   },
@@ -132,7 +231,17 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'co.edu.umb.savorsync',
                   ),
-                  MarkerLayer(markers: markers),
+                  if (routePoints.isNotEmpty)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: routePoints,
+                          strokeWidth: 4.5,
+                          color: AppColors.primary,
+                        ),
+                      ],
+                    ),
+                  MarkerLayer(markers: allMarkers),
                 ],
               ),
               SafeArea(
@@ -157,17 +266,26 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'Mapa de Bogotá (OpenStreetMap)',
-                            style: AppTextStyles.title,
+                            'Mapa Interactivo de Bogotá (GPS Real)',
+                            style: AppTextStyles.title.copyWith(fontSize: 15),
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.15),
+                            color: Colors.blue.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text('100% Gratis', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 11)),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.gps_fixed_rounded, size: 12, color: Colors.blue),
+                              const SizedBox(width: 4),
+                              Text(
+                                _currentPosition != null ? 'GPS Activo' : 'Bogotá',
+                                style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -181,7 +299,9 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
                   bottom: 24,
                   child: _RestaurantCardPreview(
                     restaurant: _selectedRestaurant!,
+                    distanceStr: _calculateDistanceStr(_selectedRestaurant!),
                     onClose: () => setState(() => _selectedRestaurant = null),
+                    onNavigate: () => _openExternalNavigation(_selectedRestaurant!),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -202,77 +322,114 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
 
 class _RestaurantCardPreview extends StatelessWidget {
   final RestaurantModel restaurant;
+  final String distanceStr;
   final VoidCallback onClose;
+  final VoidCallback onNavigate;
   final VoidCallback onTap;
 
   const _RestaurantCardPreview({
     required this.restaurant,
+    required this.distanceStr,
     required this.onClose,
+    required this.onNavigate,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: restaurant.imageUrl,
-                width: 80,
-                height: 80,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(restaurant.name, style: AppTextStyles.title),
-                  const SizedBox(height: 4),
-                  Text(restaurant.address, style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 6),
-                  Row(
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: onTap,
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: CachedNetworkImage(
+                    imageUrl: restaurant.imageUrl,
+                    width: 70,
+                    height: 70,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      RatingBarIndicator(
-                        rating: restaurant.ratingAverage,
-                        itemBuilder: (context, index) => const Icon(
-                          Icons.star_rounded,
-                          color: AppColors.accent,
-                        ),
-                        itemCount: 5,
-                        itemSize: 16.0,
+                      Row(
+                        children: [
+                          Expanded(child: Text(restaurant.name, style: AppTextStyles.title)),
+                          Chip(
+                            avatar: const Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
+                            label: Text(distanceStr, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      Text(restaurant.ratingAverage.toStringAsFixed(1), style: AppTextStyles.caption),
+                      const SizedBox(height: 2),
+                      Text(restaurant.address, style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          RatingBarIndicator(
+                            rating: restaurant.ratingAverage,
+                            itemBuilder: (context, index) => const Icon(
+                              Icons.star_rounded,
+                              color: AppColors.accent,
+                            ),
+                            itemCount: 5,
+                            itemSize: 14.0,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(restaurant.ratingAverage.toStringAsFixed(1), style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                     ],
                   ),
-                ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.grey),
+                  onPressed: onClose,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    minimumSize: const Size.fromHeight(38),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: onNavigate,
+                  icon: const Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
+                  label: Text('¿Cómo llegar? ($distanceStr)', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                ),
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close_rounded, color: Colors.grey),
-              onPressed: onClose,
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

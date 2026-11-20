@@ -6,6 +6,7 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../models/restaurant_model.dart';
+import '../../widgets/smart_recommendation_modal.dart';
 import '../restaurants/restaurant_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -56,30 +57,6 @@ class _SearchScreenState extends State<SearchScreen> {
       reviewsCount: 215,
       imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80',
     ),
-    RestaurantModel(
-      id: 'res_3',
-      name: 'Wok Zona G',
-      description: 'Gastronomía asiática sustentable y variada en el corazón gourmet de la ciudad.',
-      address: 'Carrera 5 # 69-10, Zona G, Bogotá',
-      category: 'Asiática',
-      latitude: 4.6521,
-      longitude: -74.0551,
-      ratingAverage: 4.6,
-      reviewsCount: 94,
-      imageUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=800&q=80',
-    ),
-    RestaurantModel(
-      id: 'res_4',
-      name: 'El Corral Gourmet',
-      description: 'Hamburguesas premium con ingredientes seleccionados y papas en cascos.',
-      address: 'Calle 93 # 12-11, Parque de la 93, Bogotá',
-      category: 'Hamburguesas',
-      latitude: 4.6761,
-      longitude: -74.0482,
-      ratingAverage: 4.5,
-      reviewsCount: 110,
-      imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=800&q=80',
-    ),
   ];
 
   @override
@@ -95,7 +72,9 @@ class _SearchScreenState extends State<SearchScreen> {
       if (snapshot.docs.isNotEmpty) {
         list = snapshot.docs
             .map((doc) => RestaurantModel.fromJson({'id': doc.id, ...doc.data()}))
+            .where((r) => r.status == 'activo' || r.status == 'active')
             .toList();
+        if (list.isEmpty) list = _seedRestaurants;
       } else {
         list = _seedRestaurants;
       }
@@ -134,8 +113,28 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cardColor = Theme.of(context).cardColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color ?? AppColors.textPrimary;
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: Text('Descubre Restaurantes', style: TextStyle(color: textColor)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary),
+            tooltip: 'Recomendador IA por Presupuesto y Ocasión',
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const SmartRecommendationModal(),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -174,10 +173,10 @@ class _SearchScreenState extends State<SearchScreen> {
                     selected: isSelected,
                     selectedColor: AppColors.primary,
                     labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : AppColors.textPrimary,
+                      color: isSelected ? Colors.white : textColor,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
-                    backgroundColor: Colors.white,
+                    backgroundColor: cardColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -196,7 +195,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                   : _filteredRestaurants.isEmpty
-                      ? const Center(child: Text('No se encontraron restaurantes'))
+                      ? Center(child: Text('No se encontraron restaurantes', style: TextStyle(color: textColor)))
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           itemCount: _filteredRestaurants.length,
@@ -215,9 +214,9 @@ class _SearchScreenState extends State<SearchScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: cardColor,
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: AppColors.divider),
+                                  border: Border.all(color: AppColors.divider.withValues(alpha: 0.3)),
                                 ),
                                 child: Row(
                                   children: [
@@ -235,11 +234,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(r.name, style: AppTextStyles.title),
+                                          Text(r.name, style: AppTextStyles.title.copyWith(color: textColor)),
                                           const SizedBox(height: 2),
-                                          Text(r.category, style: AppTextStyles.caption.copyWith(color: AppColors.primary)),
+                                          Text(r.category, style: AppTextStyles.caption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold)),
                                           const SizedBox(height: 4),
-                                          Text(r.address, style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          Text(r.address, style: AppTextStyles.caption.copyWith(color: textColor.withValues(alpha: 0.7)), maxLines: 1, overflow: TextOverflow.ellipsis),
                                           const SizedBox(height: 6),
                                           Row(
                                             children: [
@@ -253,13 +252,13 @@ class _SearchScreenState extends State<SearchScreen> {
                                                 itemSize: 16.0,
                                               ),
                                               const SizedBox(width: 6),
-                                              Text('${r.ratingAverage.toStringAsFixed(1)} (${r.reviewsCount})', style: AppTextStyles.caption),
+                                              Text('${r.ratingAverage.toStringAsFixed(1)} (${r.reviewsCount})', style: AppTextStyles.caption.copyWith(color: textColor)),
                                             ],
                                           ),
                                         ],
                                       ),
                                     ),
-                                    const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+                                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: textColor.withValues(alpha: 0.5)),
                                   ],
                                 ),
                               ),

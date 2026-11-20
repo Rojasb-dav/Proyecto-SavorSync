@@ -1,20 +1,20 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 class CloudinaryService {
   static const String cloudName = 'jflzrtvk';
   static const String uploadPreset = 'foodies_unsigned';
   static const String uploadUrl = 'https://api.cloudinary.com/v1_1/$cloudName/image/upload';
 
-  /// Subir una imagen a Cloudinary (Modo Unsigned)
-  /// Retorna la URL segura (https) enviada por Cloudinary o null si falla.
-  static Future<String?> uploadImage(File file) async {
+  /// Subir una imagen a Cloudinary usando XFile (compatible con Web y Móvil)
+  static Future<String?> uploadImageXFile(XFile xfile) async {
     try {
+      final bytes = await xfile.readAsBytes();
       final request = http.MultipartRequest('POST', Uri.parse(uploadUrl))
         ..fields['upload_preset'] = uploadPreset
-        ..files.add(await http.MultipartFile.fromPath('file', file.path));
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: xfile.name));
 
       final response = await request.send();
       if (response.statusCode == 200) {
@@ -31,11 +31,11 @@ class CloudinaryService {
     }
   }
 
-  /// Subir un lote de imágenes a Cloudinary (hasta 5 fotos por publicación)
-  static Future<List<String>> uploadMultipleImages(List<File> files) async {
+  /// Subir múltiples imágenes XFile (compatible con Web y Móvil)
+  static Future<List<String>> uploadMultipleXFiles(List<XFile> xfiles) async {
     final List<String> urls = [];
-    for (final file in files) {
-      final url = await uploadImage(file);
+    for (final xfile in xfiles) {
+      final url = await uploadImageXFile(xfile);
       if (url != null && url.isNotEmpty) {
         urls.add(url);
       }

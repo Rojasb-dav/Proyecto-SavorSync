@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 
 import '../core/constants/colors.dart';
 import '../core/constants/text_styles.dart';
+import '../core/services/notification_service.dart';
 import '../models/comment_model.dart';
 import '../providers/auth_provider.dart';
+import '../screens/profile/profile_screen.dart';
 
 class CommentsModal extends StatefulWidget {
   final String postId;
@@ -56,6 +58,22 @@ class _CommentsModalState extends State<CommentsModal> {
         transaction.update(postRef, {'commentsCount': FieldValue.increment(1)});
       });
 
+      final postDoc = await postRef.get();
+      if (postDoc.exists) {
+        final postData = postDoc.data();
+        final authorId = postData?['userId'] as String? ?? '';
+        final restName = postData?['restaurantName'] as String? ?? 'reseña';
+        if (authorId.isNotEmpty && authorId != user.id) {
+          NotificationService.sendNotification(
+            targetUserId: authorId,
+            title: 'Nuevo Comentario 💬',
+            body: '@${user.username} comentó en tu reseña de $restName',
+            type: 'comment',
+            targetId: widget.postId,
+          );
+        }
+      }
+
       if (mounted) {
         setState(() => _sending = false);
       }
@@ -71,145 +89,175 @@ class _CommentsModalState extends State<CommentsModal> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Row(
-              children: [
-                Text('Comentarios', style: AppTextStyles.headline),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('posts')
-                  .doc(widget.postId)
-                  .collection('comments')
-                  .orderBy('createdAt', descending: false)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                }
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.chat_bubble_outline_rounded, size: 48, color: Colors.grey),
-                        const SizedBox(height: 12),
-                        Text('Aún no hay comentarios.', style: AppTextStyles.subtle),
-                        Text('¡Sé el primero en opinar!', style: AppTextStyles.caption),
-                      ],
-                    ),
-                  );
-                }
-
-                final comments = snapshot.data!.docs
-                    .map((doc) => CommentModel.fromJson({'id': doc.id, ...doc.data()}))
-                    .toList();
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: comments.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, i) {
-                    final c = comments[i];
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                          backgroundImage: c.authorAvatarUrl != null
-                              ? CachedNetworkImageProvider(c.authorAvatarUrl!)
-                              : null,
-                          child: c.authorAvatarUrl == null
-                              ? Text(
-                                  c.authorName.isNotEmpty ? c.authorName[0].toUpperCase() : '?',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('@${c.authorName}', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 2),
-                              Text(c.content, style: AppTextStyles.body),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Row(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _commentCtrl,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendComment(),
-                      decoration: const InputDecoration(
-                        hintText: 'Escribe un comentario...',
-                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
+                  Text('Comentarios', style: AppTextStyles.headline),
+                  const Spacer(),
                   IconButton(
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.all(12),
-                    ),
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.send_rounded),
-                    onPressed: _sending ? null : _sendComment,
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            const Divider(height: 1),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('posts')
+                    .doc(widget.postId)
+                    .collection('comments')
+                    .orderBy('createdAt', descending: false)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.chat_bubble_outline_rounded, size: 48, color: Colors.grey),
+                          const SizedBox(height: 12),
+                          Text('Aún no hay comentarios.', style: AppTextStyles.subtle),
+                          Text('¡Sé el primero en opinar!', style: AppTextStyles.caption),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final comments = snapshot.data!.docs
+                      .map((doc) => CommentModel.fromJson({'id': doc.id, ...doc.data()}))
+                      .toList();
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: comments.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) {
+                      final c = comments[i];
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              if (c.authorId.isEmpty) return;
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ProfileScreen(userId: c.authorId),
+                                ),
+                              );
+                            },
+                            child: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                              backgroundImage: c.authorAvatarUrl != null
+                                  ? CachedNetworkImageProvider(c.authorAvatarUrl!)
+                                  : null,
+                              child: c.authorAvatarUrl == null
+                                  ? Text(
+                                      c.authorName.isNotEmpty ? c.authorName[0].toUpperCase() : '?',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    if (c.authorId.isEmpty) return;
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => ProfileScreen(userId: c.authorId),
+                                      ),
+                                    );
+                                  },
+                                  child: Text('@${c.authorName}', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(c.content, style: AppTextStyles.body),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _commentCtrl,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendComment(),
+                        decoration: const InputDecoration(
+                          hintText: 'Escribe un comentario...',
+                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.all(12),
+                      ),
+                      icon: _sending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.send_rounded),
+                      onPressed: _sending ? null : _sendComment,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

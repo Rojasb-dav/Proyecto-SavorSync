@@ -42,7 +42,7 @@ class ReservationModel {
       restaurantName: json['restaurantName'] as String? ?? 'Restaurante',
       clienteId: json['clienteId'] as String? ?? '',
       clienteNombre: json['clienteNombre'] as String? ?? 'Comensal',
-      numPersonas: json['numPersonas'] as int? ?? 2,
+      numPersonas: (json['numPersonas'] as num?)?.toInt() ?? 2,
       fechaReserva: json['fechaReserva'] as String? ?? '',
       horaReserva: json['horaReserva'] as String? ?? '',
       notas: json['notas'] as String? ?? '',

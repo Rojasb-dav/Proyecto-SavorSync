@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscure = true;
+  String _activeTab = 'foodie'; // 'foodie' | 'admin'
 
   @override
   void dispose() {
@@ -51,6 +52,36 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    final auth = context.read<AuthProvider>();
+    try {
+      final ok = await auth.loginWithGoogle();
+      if (!mounted) return;
+      if (ok) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const RoleBasedShell()),
+        );
+      } else {
+        if (auth.error != null && auth.error!.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.error,
+              content: Text(auth.error!),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text('Error al conectar con Google: $e'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -63,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               _Header(),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -75,19 +106,79 @@ class _LoginScreenState extends State<LoginScreen> {
                           .slideY(begin: 0.2),
                       const SizedBox(height: 6),
                       Text(
-                        'Inicia sesión para descubrir los mejores sabores de Bogotá.',
+                        'Selecciona tu perfil de acceso a la plataforma SavorSync.',
                         style: AppTextStyles.subtle,
                       ).animate(delay: 80.ms).fadeIn(duration: 400.ms),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 20),
+
+                      // Selector de Pestaña de Acceso (Foodie vs Admin)
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.divider),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setState(() => _activeTab = 'foodie'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _activeTab == 'foodie' ? AppColors.primary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '🥑 Foodie / Comensal',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: _activeTab == 'foodie' ? Colors.white : AppColors.textPrimary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setState(() => _activeTab = 'admin'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _activeTab == 'admin' ? AppColors.primary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '🏪 Admin / Moderador',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: _activeTab == 'admin' ? Colors.white : AppColors.textPrimary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
                       _animated(
                         delay: 160,
                         child: TextFormField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            hintText: 'Correo electrónico',
-                            prefixIcon: Icon(Icons.alternate_email_rounded),
+                          decoration: InputDecoration(
+                            hintText: _activeTab == 'foodie' ? 'Correo electrónico' : 'Correo institucional / admin',
+                            prefixIcon: const Icon(Icons.alternate_email_rounded),
                           ),
                           validator: (v) => (v == null || !v.contains('@'))
                               ? 'Correo inválido'
@@ -150,10 +241,50 @@ class _LoginScreenState extends State<LoginScreen> {
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2.4, color: Colors.white),
                                   )
-                                : const Text('Iniciar sesión'),
+                                : Text(_activeTab == 'foodie' ? 'Iniciar Sesión como Foodie' : 'Ingresar al Panel de Gestión'),
                           ),
                         ),
                       ),
+
+                      // Botón de Google Sign-In (SÓLO PARA FOODIES)
+                      if (_activeTab == 'foodie') ...[
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('o ingresa con', style: AppTextStyles.caption),
+                            ),
+                            const Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _animated(
+                          delay: 360,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(50),
+                              side: const BorderSide(color: AppColors.divider),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            onPressed: auth.loading ? null : _handleGoogleSignIn,
+                            icon: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 24),
+                            ),
+                            label: const Text(
+                              'Continuar con Google (Solo Foodies)',
+                              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+
                       const SizedBox(height: 16),
                       _animated(
                         delay: 400,

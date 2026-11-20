@@ -41,7 +41,7 @@ class ApiService {
   /// El dispositivo físico y el PC deben estar en la MISMA red.
   /// - Emulador Android:  http://10.0.2.2:8080
   /// - iOS Simulator:     http://localhost:8080
-  /// - Dispositivo real:  http://<IP_LAN_DEL_PC>:8080  (ej. 192.168.1.50)
+  /// - Dispositivo real:  http://[IP_LAN_DEL_PC]:8080  (ej. 192.168.1.50)
   // Cuando usas el cable con adb reverse
   static const String baseUrl = 'http://localhost:8080';
   // Alterna entre estas IPs según la red donde estés (WIFI):

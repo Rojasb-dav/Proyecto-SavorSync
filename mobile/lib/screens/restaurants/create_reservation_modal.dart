@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/notification_service.dart';
 import '../../models/restaurant_model.dart';
 import '../../providers/auth_provider.dart';
+import 'reservation_ticket_modal.dart';
 
 class CreateReservationModal extends StatefulWidget {
   final RestaurantModel restaurant;
@@ -44,11 +46,13 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
       final horaStr = '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
 
       final resRef = FirebaseFirestore.instance.collection('reservations').doc();
+      final clienteNombre = user.fullName ?? user.username;
+
       final data = {
         'restaurantId': widget.restaurant.id,
         'restaurantName': widget.restaurant.name,
         'clienteId': user.id,
-        'clienteNombre': user.fullName ?? user.username,
+        'clienteNombre': clienteNombre,
         'numPersonas': _numPersonas,
         'fechaReserva': fechaStr,
         'horaReserva': horaStr,
@@ -59,19 +63,38 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
 
       await resRef.set(data);
 
-      // Incrementar métrica de analíticas del restaurante
-      await FirebaseFirestore.instance
-          .collection('restaurants')
-          .doc(widget.restaurant.id)
-          .update({'analytics.totalReservas': FieldValue.increment(1)});
+      if (widget.restaurant.ownerId.isNotEmpty) {
+        NotificationService.sendNotification(
+          targetUserId: widget.restaurant.ownerId,
+          title: 'Nueva Solicitud de Reserva 🏪',
+          body: 'Nueva reserva de $clienteNombre para $_numPersonas personas el $fechaStr.',
+          type: 'reservation',
+          targetId: resRef.id,
+        );
+      }
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('restaurants')
+            .doc(widget.restaurant.id)
+            .update({'analytics.totalReservas': FieldValue.increment(1)});
+      } catch (_) {}
 
       if (!mounted) return;
       setState(() => _loading = false);
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('¡Reserva solicitada con éxito!'),
-          backgroundColor: Colors.green,
+
+      // Mostrar Ticket Digital con Código QR
+      showDialog(
+        context: context,
+        builder: (_) => ReservationTicketModal(
+          reservationId: resRef.id,
+          restaurantName: widget.restaurant.name,
+          clienteNombre: clienteNombre,
+          fechaReserva: fechaStr,
+          horaReserva: horaStr,
+          numPersonas: _numPersonas,
+          estado: 'pendiente',
         ),
       );
     } catch (e) {
@@ -110,7 +133,7 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
                   ),
                 ],
               ),
-              Text(widget.restaurant.name, style: AppTextStyles.subtle),
+              Text(widget.restaurant.name, style: AppTextStyles.subtle.copyWith(color: AppColors.primary)),
               const SizedBox(height: 20),
               Text('Número de personas', style: AppTextStyles.title),
               const SizedBox(height: 8),
@@ -134,7 +157,7 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: const Icon(Icons.calendar_today_rounded),
+                      icon: const Icon(Icons.calendar_today_rounded, size: 18),
                       label: Text(DateFormat('dd/MM/yyyy').format(_selectedDate)),
                       onPressed: () async {
                         final picked = await showDatePicker(
@@ -150,7 +173,7 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: const Icon(Icons.access_time_rounded),
+                      icon: const Icon(Icons.access_time_rounded, size: 18),
                       label: Text(_selectedTime.format(context)),
                       onPressed: () async {
                         final picked = await showTimePicker(
@@ -175,10 +198,14 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size.fromHeight(50),
+                ),
                 onPressed: _loading ? null : _submitReservation,
                 child: _loading
                     ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Confirmar Reserva'),
+                    : const Text('Confirmar Reserva & Generar Ticket QR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ],
           ),

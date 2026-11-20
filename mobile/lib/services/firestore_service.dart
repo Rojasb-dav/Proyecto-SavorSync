@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-import '../models/comment_model.dart';
 import '../models/post_model.dart';
 import '../models/restaurant_model.dart';
 import '../models/user_model.dart';

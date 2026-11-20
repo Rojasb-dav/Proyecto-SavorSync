@@ -2,10 +2,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../models/menu_item_model.dart';
 import '../../models/post_model.dart';
 import '../../models/restaurant_model.dart';
 import '../../providers/auth_provider.dart';
@@ -20,16 +22,37 @@ class RestaurantDetailScreen extends StatefulWidget {
   State<RestaurantDetailScreen> createState() => _RestaurantDetailScreenState();
 }
 
-class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
+class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with SingleTickerProviderStateMixin {
   bool _isFavorite = false;
-  List<PostModel> _reviews = [];
-  bool _loadingReviews = true;
+  List<PostModel> _communityReviews = [];
+  List<PostModel> _officialPosts = [];
+  bool _loadingPosts = true;
+  late TabController _tabController;
+
+  final _currencyFormat = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _registerView();
     _checkFavorite();
-    _loadReviews();
+    _loadPostsAndReviews();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _registerView() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('restaurants')
+          .doc(widget.restaurant.id)
+          .update({'viewsCount': FieldValue.increment(1)});
+    } catch (_) {}
   }
 
   Future<void> _checkFavorite() async {
@@ -57,63 +80,98 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
         .collection('favorites')
         .doc(widget.restaurant.id);
 
+    final restRef = FirebaseFirestore.instance
+        .collection('restaurants')
+        .doc(widget.restaurant.id);
+
     setState(() => _isFavorite = !_isFavorite);
 
-    if (_isFavorite) {
-      await ref.set({
-        'restaurantId': widget.restaurant.id,
-        'name': widget.restaurant.name,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      await ref.delete();
-    }
+    try {
+      if (_isFavorite) {
+        await ref.set({
+          'restaurantId': widget.restaurant.id,
+          'name': widget.restaurant.name,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        await restRef.update({'favoritesCount': FieldValue.increment(1)});
+      } else {
+        await ref.delete();
+        await restRef.update({'favoritesCount': FieldValue.increment(-1)});
+      }
+    } catch (_) {}
   }
 
-  Future<void> _loadReviews() async {
+  Future<void> _loadPostsAndReviews() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final queryById = await FirebaseFirestore.instance
+          .collection('posts')
+          .where('restaurantId', isEqualTo: widget.restaurant.id)
+          .get();
+
+      final queryByName = await FirebaseFirestore.instance
           .collection('posts')
           .where('restaurantName', isEqualTo: widget.restaurant.name)
           .get();
 
-      final posts = snapshot.docs.map((doc) {
+      final Map<String, PostModel> map = {};
+
+      for (final doc in [...queryById.docs, ...queryByName.docs]) {
         final data = doc.data();
         final createdAtField = data['createdAt'];
         DateTime dt = DateTime.now();
         if (createdAtField is Timestamp) {
           dt = createdAtField.toDate();
         }
-        return PostModel.fromJson({
+        map[doc.id] = PostModel.fromJson({
           'id': doc.id,
           ...data,
           'createdAt': dt.toIso8601String(),
         });
+      }
+
+      final allList = map.values.toList();
+      final ownerId = widget.restaurant.ownerId;
+      final adminIds = widget.restaurant.adminIds;
+
+      // Separar Novedades Oficiales de las Reseñas de Comensales
+      final official = allList.where((p) {
+        final isOwner = ownerId.isNotEmpty && p.userId == ownerId;
+        final isAdmin = adminIds.contains(p.userId);
+        return isOwner || isAdmin;
+      }).toList();
+
+      final community = allList.where((p) {
+        final isOwner = ownerId.isNotEmpty && p.userId == ownerId;
+        final isAdmin = adminIds.contains(p.userId);
+        return !isOwner && !isAdmin;
       }).toList();
 
       if (!mounted) return;
       setState(() {
-        _reviews = posts;
-        _loadingReviews = false;
+        _officialPosts = official;
+        _communityReviews = community;
+        _loadingPosts = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingReviews = false);
+      setState(() => _loadingPosts = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final r = widget.restaurant;
+    final cardColor = Theme.of(context).cardColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color ?? AppColors.textPrimary;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
             expandedHeight: 240,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(r.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              title: Text(r.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
               background: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -175,51 +233,167 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                         itemSize: 20.0,
                       ),
                       const SizedBox(width: 6),
-                      Text('${r.ratingAverage.toStringAsFixed(1)} (${r.reviewsCount})', style: AppTextStyles.caption),
+                      Text('${r.ratingAverage.toStringAsFixed(1)} (${r.reviewsCount})', style: AppTextStyles.caption.copyWith(color: textColor)),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   if (r.description.isNotEmpty) ...[
-                    Text(r.description, style: AppTextStyles.body),
-                    const SizedBox(height: 16),
+                    Text(r.description, style: AppTextStyles.body.copyWith(color: textColor)),
+                    const SizedBox(height: 12),
                   ],
                   Row(
                     children: [
                       const Icon(Icons.location_on_rounded, color: AppColors.primary, size: 20),
                       const SizedBox(width: 8),
-                      Expanded(child: Text(r.address, style: AppTextStyles.subtle)),
+                      Expanded(child: Text(r.address, style: AppTextStyles.subtle.copyWith(color: textColor.withValues(alpha: 0.7)))),
                     ],
                   ),
-                  const Divider(height: 32),
-                  Text('Reseñas de la comunidad (${_reviews.length})', style: AppTextStyles.headline),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+
+                  // TabBar: Menú / Carta, Reseñas Comensales, Promociones del Local
+                  TabBar(
+                    controller: _tabController,
+                    labelColor: AppColors.primary,
+                    unselectedLabelColor: textColor.withValues(alpha: 0.6),
+                    indicatorColor: AppColors.primary,
+                    tabs: [
+                      const Tab(icon: Icon(Icons.restaurant_menu_rounded), text: 'Menú / Carta'),
+                      Tab(icon: const Icon(Icons.rate_review_rounded), text: 'Reseñas (${_communityReviews.length})'),
+                      Tab(icon: const Icon(Icons.campaign_rounded), text: 'Promociones (${_officialPosts.length})'),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
-          if (_loadingReviews)
-            const SliverToBoxAdapter(
-              child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-            )
-          else if (_reviews.isEmpty)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 30),
-                child: Center(child: Text('Sé el primero en calificar este restaurante')),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: PostCard(post: _reviews[i], onDeleted: _loadReviews),
-                ),
-                childCount: _reviews.length,
-              ),
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 30)),
         ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            // 1. Menú / Carta del Local (Tiempo Real desde Firestore)
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('restaurants')
+                  .doc(r.id)
+                  .collection('menu')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                }
+
+                final docs = snapshot.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.restaurant_menu_rounded, size: 54, color: AppColors.secondary),
+                        const SizedBox(height: 12),
+                        Text('Menú digital en preparación', style: AppTextStyles.title.copyWith(color: textColor)),
+                        const SizedBox(height: 4),
+                        Text('El establecimiento cargará sus platillos pronto.', style: AppTextStyles.caption.copyWith(color: textColor.withValues(alpha: 0.7))),
+                      ],
+                    ),
+                  );
+                }
+
+                final menuItems = docs.map((d) => MenuItemModel.fromJson({'id': d.id, ...d.data()})).toList();
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: menuItems.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, i) {
+                    final item = menuItems[i];
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.divider.withValues(alpha: 0.3)),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                      ),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: CachedNetworkImage(
+                              imageUrl: (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+                                  ? item.imageUrl!
+                                  : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80',
+                              width: 80,
+                              height: 80,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(child: Text(item.name, style: AppTextStyles.title.copyWith(fontSize: 15, color: textColor))),
+                                    if (!item.isAvailable)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6)),
+                                        child: const Text('Agotado', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(item.category, style: AppTextStyles.caption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                if (item.description.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(item.description, style: AppTextStyles.caption.copyWith(color: textColor.withValues(alpha: 0.7)), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                ],
+                                const SizedBox(height: 6),
+                                Text(
+                                  _currencyFormat.format(item.price),
+                                  style: AppTextStyles.title.copyWith(color: AppColors.primary, fontSize: 15, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+
+            // 2. Reseñas de la Comunidad (Foodies)
+            _loadingPosts
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : _communityReviews.isEmpty
+                    ? Center(child: Text('Sé el primero en calificar este restaurante', style: TextStyle(color: textColor)))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _communityReviews.length,
+                        itemBuilder: (context, i) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: PostCard(post: _communityReviews[i], onDeleted: _loadPostsAndReviews),
+                        ),
+                      ),
+
+            // 3. Promociones y Publicaciones Oficiales del Local
+            _loadingPosts
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : _officialPosts.isEmpty
+                    ? Center(child: Text('El restaurante aún no ha publicado promociones u ofertas especiales', style: TextStyle(color: textColor), textAlign: TextAlign.center))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _officialPosts.length,
+                        itemBuilder: (context, i) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: PostCard(post: _officialPosts[i], onDeleted: _loadPostsAndReviews),
+                        ),
+                      ),
+          ],
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

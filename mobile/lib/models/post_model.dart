@@ -4,6 +4,7 @@ class PostModel {
   final String username;
   final String fullName;
   final String? userAvatarUrl;
+  final String? restaurantId;
   final String restaurantName;
   final String restaurantAddress;
   final String content;
@@ -20,6 +21,7 @@ class PostModel {
     required this.userId,
     required this.username,
     required this.fullName,
+    this.restaurantId,
     required this.restaurantName,
     required this.restaurantAddress,
     required this.content,
@@ -43,6 +45,7 @@ class PostModel {
       userId: userId,
       username: username,
       fullName: fullName,
+      restaurantId: restaurantId,
       restaurantName: restaurantName,
       restaurantAddress: restaurantAddress,
       content: content,
@@ -64,13 +67,14 @@ class PostModel {
       username: json['username'] as String,
       fullName: json['fullName'] as String? ?? '',
       userAvatarUrl: json['userAvatarUrl'] as String?,
+      restaurantId: json['restaurantId'] as String?,
       restaurantName: json['restaurantName'] as String? ?? '',
       restaurantAddress: json['restaurantAddress'] as String? ?? '',
       content: json['content'] as String? ?? '',
       rating: (json['rating'] as num?)?.toDouble() ?? 0,
       imageUrl: json['imageUrl'] as String? ?? '',
-      likesCount: json['likesCount'] as int? ?? 0,
-      commentsCount: json['commentsCount'] as int? ?? 0,
+      likesCount: (json['likesCount'] as num?)?.toInt() ?? 0,
+      commentsCount: (json['commentsCount'] as num?)?.toInt() ?? 0,
       likedByMe: json['likedByMe'] as bool? ?? false,
       savedByMe: json['savedByMe'] as bool? ?? false,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),

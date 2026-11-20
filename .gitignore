@@ -1,0 +1,19 @@
+# Flutter build and cache directories
+mobile/build/
+mobile/.dart_tool/
+mobile/.firebase/
+mobile/.pub-cache/
+mobile/.pub/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/.gradle/
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# OS generated files
+.DS_Store
+Thumbs.db

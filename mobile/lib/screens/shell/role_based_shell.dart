@@ -6,15 +6,15 @@ import '../../core/constants/text_styles.dart';
 import '../../providers/auth_provider.dart';
 
 import '../admin/analytics_dashboard.dart';
+import '../admin/menu_management_screen.dart';
 import '../admin/moderation_screen.dart';
 import '../admin/pqrs_management_screen.dart';
 import '../admin/restaurant_admin_dashboard.dart';
 import '../admin/restaurant_approvals_screen.dart';
+import '../admin/restaurant_reservations_screen.dart';
 import '../auth/login_screen.dart';
 import '../home/home_screen.dart';
-import '../map/restaurant_map_screen.dart';
 import '../profile/profile_screen.dart';
-import '../search/search_screen.dart';
 
 class RoleBasedShell extends StatefulWidget {
   const RoleBasedShell({super.key});
@@ -46,38 +46,68 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
       return const HomeScreen();
     }
 
-    // 2. Administrador de Restaurante -> Panel Web / Adaptativo (NavigationRail)
+    // 2. Administrador de Restaurante -> Panel Web / Adaptativo completo (NavigationRail)
     if (role == 'restaurant_admin') {
+      final pages = [
+        const RestaurantAdminDashboard(),
+        const MenuManagementScreen(),
+        const RestaurantReservationsScreen(),
+        const AnalyticsDashboard(),
+        const ProfileScreen(),
+      ];
+
+      final currentIndex = _webRailIndex >= pages.length ? 0 : _webRailIndex;
+
       return _buildAdminWebShell(
-        title: 'Panel de Restaurante',
+        title: 'Panel SavorSync - Administrador de Restaurante',
+        userEmail: user.email,
+        railIndex: currentIndex,
         railItems: const [
           NavigationRailDestination(
             icon: Icon(Icons.storefront_rounded),
-            label: Text('Mi Restaurante'),
+            selectedIcon: Icon(Icons.storefront_rounded, color: AppColors.primary),
+            label: Text('Mi Local'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.restaurant_menu_rounded),
+            selectedIcon: Icon(Icons.restaurant_menu_rounded, color: AppColors.primary),
+            label: Text('Menú / Carta'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.event_seat_rounded),
+            selectedIcon: Icon(Icons.event_seat_rounded, color: AppColors.primary),
+            label: Text('Reservas'),
           ),
           NavigationRailDestination(
             icon: Icon(Icons.bar_chart_rounded),
+            selectedIcon: Icon(Icons.bar_chart_rounded, color: AppColors.primary),
             label: Text('Analítica BI'),
           ),
           NavigationRailDestination(
             icon: Icon(Icons.person_rounded),
+            selectedIcon: Icon(Icons.person_rounded, color: AppColors.primary),
             label: Text('Mi Perfil'),
           ),
         ],
-        bodyPages: [
-          const RestaurantAdminDashboard(),
-          const AnalyticsDashboard(
-            restaurant: null, // Carga dinámica del restaurante del admin
-          ),
-          const ProfileScreen(),
-        ],
+        bodyPages: pages,
       );
     }
 
     // 3. Moderador o Admin del Sistema -> Panel Web de Moderación
     if (role == 'moderador' || role == 'admin_sistema') {
+      final pages = const [
+        ModerationScreen(),
+        RestaurantApprovalsScreen(),
+        PqrsManagementScreen(),
+        ProfileScreen(),
+      ];
+
+      final currentIndex = _webRailIndex >= pages.length ? 0 : _webRailIndex;
+
       return _buildAdminWebShell(
-        title: 'Panel de Moderación Global',
+        title: 'Panel SavorSync - Moderación & Gobierno',
+        userEmail: user.email,
+        railIndex: currentIndex,
         railItems: const [
           NavigationRailDestination(
             icon: Icon(Icons.gavel_rounded),
@@ -96,12 +126,7 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
             label: Text('Mi Perfil'),
           ),
         ],
-        bodyPages: const [
-          ModerationScreen(),
-          RestaurantApprovalsScreen(),
-          PqrsManagementScreen(),
-          ProfileScreen(),
-        ],
+        bodyPages: pages,
       );
     }
 
@@ -110,6 +135,8 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
 
   Widget _buildAdminWebShell({
     required String title,
+    required String userEmail,
+    required int railIndex,
     required List<NavigationRailDestination> railItems,
     required List<Widget> bodyPages,
   }) {
@@ -117,10 +144,35 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title, style: AppTextStyles.title),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Text(title, style: AppTextStyles.title.copyWith(fontSize: 18)),
+          ],
+        ),
         actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12.0),
+              child: Chip(
+                avatar: const Icon(Icons.account_circle_rounded, size: 18, color: AppColors.primary),
+                label: Text(userEmail, style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
+                backgroundColor: AppColors.background,
+              ),
+            ),
+          ),
           IconButton(
-            icon: const Icon(Icons.logout_rounded),
+            icon: const Icon(Icons.logout_rounded, color: AppColors.error),
             tooltip: 'Cerrar Sesión',
             onPressed: () async {
               await auth.logout();
@@ -132,26 +184,38 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
               );
             },
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: Row(
         children: [
           NavigationRail(
-            selectedIndex: _webRailIndex,
+            selectedIndex: railIndex,
             onDestinationSelected: (int index) {
               setState(() => _webRailIndex = index);
             },
             labelType: NavigationRailLabelType.all,
-            selectedIconTheme: const IconThemeData(color: AppColors.primary),
+            minWidth: 90,
+            selectedIconTheme: const IconThemeData(color: AppColors.primary, size: 28),
+            unselectedIconTheme: const IconThemeData(color: AppColors.textSecondary, size: 24),
             selectedLabelTextStyle: AppTextStyles.caption.copyWith(
               color: AppColors.primary,
               fontWeight: FontWeight.bold,
             ),
+            unselectedLabelTextStyle: AppTextStyles.caption.copyWith(
+              color: AppColors.textSecondary,
+            ),
             destinations: railItems,
           ),
-          const VerticalDivider(thickness: 1, width: 1),
+          const VerticalDivider(thickness: 1, width: 1, color: AppColors.divider),
           Expanded(
-            child: bodyPages[_webRailIndex],
+            child: Container(
+              color: const Color(0xFFF8F9FA),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: bodyPages[railIndex],
+              ),
+            ),
           ),
         ],
       ),

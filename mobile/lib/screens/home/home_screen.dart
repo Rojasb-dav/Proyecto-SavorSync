@@ -1,20 +1,22 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/notification_service.dart';
+import '../../models/notification_model.dart';
 import '../../models/post_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/post_card.dart';
 import '../map/restaurant_map_screen.dart';
+import '../notifications/notification_center_screen.dart';
 import '../posts/create_post_screen.dart';
 import '../profile/profile_screen.dart';
 import '../search/search_screen.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -84,14 +86,34 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: pages[_tab],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.05, 0),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey<int>(_tab),
+          child: pages[_tab],
+        ),
+      ),
       bottomNavigationBar: CurvedNavigationBar(
         key: _navKey,
         index: _tab,
         height: 60,
         backgroundColor: Colors.transparent,
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         buttonBackgroundColor: AppColors.primary,
         animationDuration: const Duration(milliseconds: 300),
         items: [
@@ -178,16 +200,12 @@ class _FeedTab extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text('SavorSync', style: AppTextStyles.headline),
                 const Spacer(),
+                const _NotificationBell(),
                 IconButton(
-                  icon: const Icon(Icons.tune_rounded),
+                  icon: const Icon(Icons.settings_outlined, size: 24),
+                  tooltip: 'Ajustes y Configuración',
                   onPressed: () {
-                    // TODO: Implementar filtros
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.notifications_none_rounded),
-                  onPressed: () {
-                    // TODO: Implementar alertas
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
                   },
                 ),
               ],
@@ -198,24 +216,20 @@ class _FeedTab extends StatelessWidget {
               color: AppColors.primary,
               onRefresh: onRefresh,
               child: loading
-                  ? ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      itemCount: 3,
-                      itemBuilder: (_, __) => const _SkeletonPost(),
-                    )
+                  ? const _FeedSkeleton()
                   : posts.isEmpty
-                      ? _EmptyFeed(onRefresh: onRefresh)
+                      ? const _EmptyFeedState()
                       : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                           itemCount: posts.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 16),
-                          itemBuilder: (_, i) => PostCard(
-                    post: posts[i],
-                    onDeleted: onRefresh,
-                  )
-                      .animate(delay: Duration(milliseconds: 80 * i))
-                      .fadeIn(duration: 250.ms)
-                      .slideY(begin: 0.15, curve: Curves.easeOutCubic),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 16),
+                          itemBuilder: (context, i) {
+                            return PostCard(
+                              post: posts[i],
+                              onDeleted: onRefresh,
+                            );
+                          },
                         ),
             ),
           ),
@@ -225,59 +239,105 @@ class _FeedTab extends StatelessWidget {
   }
 }
 
-class _EmptyFeed extends StatelessWidget {
-  final Future<void> Function() onRefresh;
-  const _EmptyFeed({required this.onRefresh});
+class _NotificationBell extends StatelessWidget {
+  const _NotificationBell();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    if (user == null) {
+      return IconButton(
+        icon: const Icon(Icons.notifications_outlined),
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationCenterScreen()));
+        },
+      );
+    }
+
+    return StreamBuilder<List<NotificationModel>>(
+      stream: NotificationService.streamNotifications(user.id),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.data?.where((n) => !n.read).length ?? 0;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined, size: 26),
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationCenterScreen()));
+              },
+            ),
+            if (unreadCount > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text(
+                    unreadCount > 9 ? '9+' : '$unreadCount',
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _FeedSkeleton extends StatelessWidget {
+  const _FeedSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 3,
+      itemBuilder: (_, __) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Shimmer.fromColors(
+          baseColor: const Color(0xFFEEEEEE),
+          highlightColor: const Color(0xFFF8F8F8),
+          child: Container(
+            height: 320,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFeedState extends StatelessWidget {
+  const _EmptyFeedState();
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
       children: [
         SizedBox(height: MediaQuery.of(context).size.height * 0.2),
         Center(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.restaurant_rounded,
-                    size: 48, color: AppColors.primary),
-              ),
-              const SizedBox(height: 24),
-              Text('¡Bienvenido a SavorSync!', style: AppTextStyles.headline),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Text(
-                  'Aún no hay publicaciones en tu feed. ¡Sé el primero en compartir tu experiencia culinaria!',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.subtle,
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  final refresh = await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CreatePostScreen()),
-                  );
-                  if (refresh == true) onRefresh();
-                },
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Crear mi primera reseña'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
+              const Icon(Icons.restaurant_rounded,
+                  size: 64, color: AppColors.secondary),
+              const SizedBox(height: 16),
+              Text('Aún no hay publicaciones', style: AppTextStyles.headline),
+              const SizedBox(height: 6),
+              Text(
+                '¡Sé el primero en compartir tu experiencia!',
+                style: AppTextStyles.subtle,
               ),
             ],
           ),
@@ -287,61 +347,24 @@ class _EmptyFeed extends StatelessWidget {
   }
 }
 
-class _SkeletonPost extends StatelessWidget {
-  const _SkeletonPost();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Shimmer.fromColors(
-        baseColor: const Color(0xFFEEEEEE),
-        highlightColor: const Color(0xFFF8F8F8),
-        child: Container(
-          height: 360,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _PlaceholderTab extends StatelessWidget {
   final IconData icon;
   final String title;
-  final String message;
-  const _PlaceholderTab({
-    required this.icon,
-    required this.title,
-    this.message = 'Próximamente',
-  });
+  const _PlaceholderTab({required this.icon, required this.title});
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Center(
+    return Scaffold(
+      body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 36, color: AppColors.primary),
-            ),
+            Icon(icon, size: 64, color: AppColors.primary),
             const SizedBox(height: 16),
             Text(title, style: AppTextStyles.headline),
-            const SizedBox(height: 6),
-            Text(message, style: AppTextStyles.subtle),
           ],
         ),
       ),
     );
   }
 }
-

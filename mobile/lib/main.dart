@@ -8,11 +8,16 @@ import 'core/constants/colors.dart';
 import 'core/constants/text_styles.dart';
 import 'core/services/api_service.dart';
 import 'providers/auth_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/splash/splash_screen.dart';
+
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -30,10 +35,10 @@ class SavorSyncApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..bootstrap()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: Builder(
-        builder: (context) {
-          // Cuando el backend devuelve 401, expulsar al login automáticamente.
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
           ApiService().onUnauthorized = () {
             final auth = context.read<AuthProvider>();
             auth.forceLogout();
@@ -42,7 +47,9 @@ class SavorSyncApp extends StatelessWidget {
           return MaterialApp(
             title: 'SavorSync',
             debugShowCheckedModeBanner: false,
-            theme: _buildTheme(),
+            theme: _buildTheme(Brightness.light),
+            darkTheme: _buildTheme(Brightness.dark),
+            themeMode: themeProvider.themeMode,
             home: const SplashScreen(),
           );
         },
@@ -50,27 +57,36 @@ class SavorSyncApp extends StatelessWidget {
     );
   }
 
-  ThemeData _buildTheme() {
-    final base = ThemeData.light();
+  ThemeData _buildTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final base = isDark ? ThemeData.dark() : ThemeData.light();
+    final bgColor = isDark ? const Color(0xFF121212) : AppColors.background;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final textColor = isDark ? Colors.white : AppColors.textPrimary;
+
     return base.copyWith(
-      scaffoldBackgroundColor: AppColors.background,
-      colorScheme: const ColorScheme.light(
+      brightness: brightness,
+      scaffoldBackgroundColor: bgColor,
+      cardColor: cardColor,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        brightness: brightness,
         primary: AppColors.primary,
         secondary: AppColors.accent,
-        surface: AppColors.background,
+        surface: cardColor,
         error: AppColors.error,
       ),
       textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
-        bodyColor: AppColors.textPrimary,
-        displayColor: AppColors.textPrimary,
+        bodyColor: textColor,
+        displayColor: textColor,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: cardColor,
+        foregroundColor: textColor,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: AppTextStyles.headline,
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        titleTextStyle: AppTextStyles.headline.copyWith(color: textColor),
+        iconTheme: IconThemeData(color: textColor),
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
@@ -83,16 +99,16 @@ class SavorSyncApp extends StatelessWidget {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        hintStyle: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
+        hintStyle: AppTextStyles.body.copyWith(color: isDark ? Colors.grey.shade400 : AppColors.textSecondary),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.divider),
+          borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : AppColors.divider),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.divider),
+          borderSide: BorderSide(color: isDark ? Colors.grey.shade800 : AppColors.divider),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),

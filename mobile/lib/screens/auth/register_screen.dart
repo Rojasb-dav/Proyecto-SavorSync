@@ -20,7 +20,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  String _selectedRole = 'foodie';
   bool _obscure = true;
 
   @override
@@ -40,7 +39,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       username: _usernameCtrl.text.trim(),
       password: _passwordCtrl.text,
       fullName: _fullNameCtrl.text.trim(),
-      role: _selectedRole,
+      role: 'foodie',
     );
     if (!mounted) return;
     if (ok) {
@@ -52,7 +51,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: AppColors.error,
-          content: Text(auth.error ?? 'No se pudo crear la cuenta'),
+          content: Text(auth.error ?? 'No se pudo completar el registro'),
         ),
       );
     }
@@ -61,30 +60,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        title: const Text('Crear Cuenta'),
         elevation: 0,
-        leading: const BackButton(color: AppColors.textPrimary),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+          padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Crea tu cuenta', style: AppTextStyles.displayMedium)
+                Text('Únete a SavorSync', style: AppTextStyles.displayMedium)
                     .animate()
                     .fadeIn(duration: 400.ms)
                     .slideY(begin: 0.2),
                 const SizedBox(height: 6),
                 Text(
-                  'Únete a la comunidad gastronómica de Bogotá.',
+                  'Descubre, comparte y gestiona la gastronomía de Bogotá.',
                   style: AppTextStyles.subtle,
-                ).animate(delay: 80.ms).fadeIn(),
-                const SizedBox(height: 28),
+                ).animate(delay: 80.ms).fadeIn(duration: 400.ms),
+                const SizedBox(height: 24),
                 _animated(
                   delay: 140,
                   child: TextFormField(
@@ -94,49 +93,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       hintText: 'Nombre completo',
                       prefixIcon: Icon(Icons.person_outline_rounded),
                     ),
-                    validator: (v) =>
-                        (v == null || v.trim().length < 3) ? 'Nombre muy corto' : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Ingresa tu nombre'
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 14),
                 _animated(
                   delay: 200,
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedRole,
-                    decoration: const InputDecoration(
-                      hintText: 'Tipo de cuenta',
-                      prefixIcon: Icon(Icons.badge_outlined),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'foodie',
-                        child: Text('Comensal (Foodie)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'restaurant_admin',
-                        child: Text('Administrador de Restaurante'),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setState(() => _selectedRole = val);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _animated(
-                  delay: 260,
                   child: TextFormField(
                     controller: _usernameCtrl,
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
-                      hintText: 'Nombre de usuario',
+                      hintText: 'Nombre de usuario (@ejemplo)',
                       prefixIcon: Icon(Icons.alternate_email_rounded),
                     ),
-                    validator: (v) {
-                      if (v == null || v.trim().length < 3) return 'Mínimo 3 caracteres';
-                      if (v.contains(' ')) return 'No uses espacios';
-                      return null;
-                    },
+                    validator: (v) => (v == null || v.trim().length < 3)
+                        ? 'Mínimo 3 caracteres'
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -187,26 +161,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 strokeWidth: 2.4, color: Colors.white),
                           )
                         : const Text('Crear cuenta'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _animated(
-                  delay: 440,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('¿Ya tienes cuenta?', style: AppTextStyles.subtle),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text(
-                          'Inicia sesión',
-                          style: AppTextStyles.button.copyWith(
-                            fontSize: 14,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],

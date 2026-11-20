@@ -58,6 +58,25 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> loginWithGoogle() async {
+    _setLoading(true);
+    try {
+      final result = await _authService.signInWithGoogle();
+      _user = result.user;
+      _status = AuthStatus.authenticated;
+      _error = null;
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _error = _extractFirebaseAuthError(e);
+      return false;
+    } catch (e) {
+      _error = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<bool> register({
     required String email,
     required String username,
