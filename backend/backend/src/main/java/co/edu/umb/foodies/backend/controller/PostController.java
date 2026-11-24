@@ -90,7 +90,7 @@ public class PostController {
                     }
                     notificationRepository.save(Notification.builder()
                             .clienteId(post.getUser().getId())
-                            .type(Notification.NotificationType.comment)
+                            .type(Notification.NotificationType.comentario)
                             .title("Nuevo comentario en tu reseña 💬")
                             .body(commenterName + " comentó: \"" + savedComment.getContent() + "\"")
                             .read(false)
