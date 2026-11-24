@@ -44,6 +44,9 @@ public class PostController {
     @PostMapping
     public ResponseEntity<PostDTO> createPost(@RequestBody PostDTO postDTO, HttpServletRequest request) {
         String userId = getUserIdFromRequest(request);
+        if (userId == null || userId.isBlank()) {
+            userId = postDTO.getUserId();
+        }
         return ResponseEntity.ok(postService.createPost(postDTO, userId));
     }
 
