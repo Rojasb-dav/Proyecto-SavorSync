@@ -2,7 +2,9 @@ package co.edu.umb.foodies.backend.service;
 
 import co.edu.umb.foodies.backend.dto.request.UpdateProfileRequest;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
+import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.User;
+import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -10,13 +12,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
 
     public List<UserResponse> getAllUsers(String authUserId) {
         return userRepository.findAll().stream()
@@ -83,18 +89,45 @@ public class UserService {
 
     @Transactional
     public void follow(String followerId, String followingId) {
-        if (followerId.equals(followingId)) return;
-        User follower = userRepository.findById(followerId).orElseThrow();
-        User following = userRepository.findById(followingId).orElseThrow();
-        follower.getFollowing().add(following);
-        userRepository.save(follower);
+        if (followerId == null || followingId == null || followerId.equals(followingId)) return;
+        User follower = userRepository.findById(followerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Seguidor no encontrado"));
+        User following = userRepository.findById(followingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario a seguir no encontrado"));
+
+        if (follower.getFollowing() == null) {
+            follower.setFollowing(new HashSet<>());
+        }
+
+        if (!follower.getFollowing().contains(following)) {
+            follower.getFollowing().add(following);
+            userRepository.save(follower);
+
+            try {
+                notificationRepository.save(Notification.builder()
+                        .id(UUID.randomUUID().toString())
+                        .clienteId(followingId)
+                        .type(Notification.NotificationType.seguidor)
+                        .title("¡Tienes un nuevo seguidor! 👥")
+                        .body("@" + follower.getUsername() + " ha comenzado a seguirte en SavorSync.")
+                        .read(false)
+                        .channel(Notification.Channel.in_app)
+                        .createdAt(LocalDateTime.now())
+                        .build());
+            } catch (Exception e) {
+                System.err.println("WARN: Fallo al notificar Follow: " + e.getMessage());
+            }
+        }
     }
 
     @Transactional
     public void unfollow(String followerId, String followingId) {
-        User follower = userRepository.findById(followerId).orElseThrow();
-        User following = userRepository.findById(followingId).orElseThrow();
-        follower.getFollowing().remove(following);
-        userRepository.save(follower);
+        if (followerId == null || followingId == null) return;
+        User follower = userRepository.findById(followerId).orElse(null);
+        User following = userRepository.findById(followingId).orElse(null);
+        if (follower != null && following != null && follower.getFollowing() != null) {
+            follower.getFollowing().remove(following);
+            userRepository.save(follower);
+        }
     }
 }

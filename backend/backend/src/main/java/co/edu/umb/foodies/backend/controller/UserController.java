@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.util.List;
 import java.util.Map;
@@ -49,7 +48,7 @@ public class UserController {
         return ResponseEntity.ok(userService.updateAvatar(authUserId, id, body.get("avatarUrl")));
     }
 
-    @PutMapping("/{id}/status")
+    @PutMapping({"/{id}/status", "/{id}/toggle-active"})
     public ResponseEntity<UserResponse> toggleUserStatus(@PathVariable String id) {
         return ResponseEntity.ok(userService.toggleUserStatus(id));
     }
