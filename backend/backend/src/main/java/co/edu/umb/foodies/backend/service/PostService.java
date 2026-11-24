@@ -1,9 +1,11 @@
 package co.edu.umb.foodies.backend.service;
 
 import co.edu.umb.foodies.backend.dto.PostDTO;
+import co.edu.umb.foodies.backend.model.Like;
 import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.Post;
 import co.edu.umb.foodies.backend.model.User;
+import co.edu.umb.foodies.backend.repository.LikeRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.PostRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
@@ -14,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -26,6 +27,7 @@ public class PostService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
+    private final LikeRepository likeRepository;
 
     @Transactional(readOnly = true)
     public List<PostDTO> getAllPosts(String currentUserId) {
@@ -60,7 +62,6 @@ public class PostService {
                 .contenido(dto.getContent() != null ? dto.getContent() : "Reseña gastronómica")
                 .rating(dto.getRating() != null ? dto.getRating() : 5.0)
                 .imageUrl(dto.getImageUrl())
-                .likedBy(new HashSet<>())
                 .status(Post.PostStatus.publicada)
                 .isPublic(true)
                 .likesCount(0)
@@ -81,17 +82,19 @@ public class PostService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
-        if (post.getLikedBy() == null) {
-            post.setLikedBy(new HashSet<>());
-        }
-
-        if (post.getLikedBy().contains(user)) {
-            post.getLikedBy().remove(user);
+        boolean exists = likeRepository.existsByPostIdAndClienteId(postId, userId);
+        if (exists) {
+            likeRepository.deleteByPostIdAndClienteId(postId, userId);
         } else {
-            post.getLikedBy().add(user);
+            Like like = Like.builder()
+                    .id(UUID.randomUUID().toString())
+                    .postId(postId)
+                    .clienteId(userId)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            likeRepository.save(like);
 
-            // Enviar notificacion automatica al autor de la reseña
-            if (!post.getUser().getId().equals(userId)) {
+            if (post.getUser() != null && !post.getUser().getId().equals(userId)) {
                 try {
                     notificationRepository.save(Notification.builder()
                             .id(UUID.randomUUID().toString())
@@ -108,6 +111,8 @@ public class PostService {
                 }
             }
         }
+        int newLikesCount = (int) likeRepository.countByPostId(postId);
+        post.setLikesCount(newLikesCount);
         postRepository.save(post);
     }
 
@@ -119,13 +124,13 @@ public class PostService {
         if (!post.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes permiso para eliminar esta publicación");
         }
+        likeRepository.deleteByPostIdAndClienteId(postId, userId);
         postRepository.delete(post);
     }
 
     private PostDTO convertToDTO(Post post, String currentUserId) {
-        int likesCount = (post.getLikedBy() != null) ? post.getLikedBy().size() : 0;
-        boolean likedByMe = currentUserId != null && post.getLikedBy() != null &&
-                post.getLikedBy().stream().anyMatch(u -> u.getId().equals(currentUserId));
+        int likesCount = (post.getLikesCount() != null) ? post.getLikesCount() : (int) likeRepository.countByPostId(post.getId());
+        boolean likedByMe = currentUserId != null && likeRepository.existsByPostIdAndClienteId(post.getId(), currentUserId);
 
         return PostDTO.builder()
                 .id(post.getId())
@@ -139,7 +144,7 @@ public class PostService {
                 .rating(post.getRating())
                 .imageUrl(post.getImageUrl())
                 .likesCount(likesCount)
-                .commentsCount(0)
+                .commentsCount(post.getCommentsCount() != null ? post.getCommentsCount() : 0)
                 .likedByMe(likedByMe)
                 .createdAt(post.getCreatedAt())
                 .build();

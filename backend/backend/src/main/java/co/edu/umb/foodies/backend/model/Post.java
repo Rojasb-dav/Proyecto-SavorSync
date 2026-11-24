@@ -5,8 +5,6 @@ import lombok.*;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -70,15 +68,6 @@ public class Post {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-        name = "likes",
-        joinColumns = @JoinColumn(name = "publicacion_id"),
-        inverseJoinColumns = @JoinColumn(name = "cliente_id")
-    )
-    @Builder.Default
-    private Set<User> likedBy = new HashSet<>();
-
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID().toString();
@@ -86,7 +75,6 @@ public class Post {
         if (commentsCount == null) commentsCount = 0;
         if (isPublic == null) isPublic = true;
         if (status == null) status = PostStatus.publicada;
-        if (likedBy == null) likedBy = new HashSet<>();
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;
