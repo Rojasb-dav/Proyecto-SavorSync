@@ -38,6 +38,40 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
     }
   }
 
+  Future<void> _deleteRestaurant(RestaurantModel r) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar Restaurante Definitivamente'),
+        content: Text('¿Seguro que deseas eliminar el restaurante "${r.name}"? Esta acción eliminará el local de la plataforma.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar Local 🗑️', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _apiService.dio.delete('/restaurants/${r.id}');
+      _loadRestaurants();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restaurante "${r.name}" eliminado definitivamente')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar restaurante: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
   void _showInspectModal(BuildContext context, RestaurantModel r) {
     showDialog(
       context: context,
@@ -74,7 +108,7 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
                           Expanded(child: Text(r.name, style: AppTextStyles.headline.copyWith(fontSize: 20))),
                           Chip(
                             label: Text(r.status.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                            backgroundColor: Colors.orange.shade800,
+                            backgroundColor: r.status == 'activo' ? Colors.green : Colors.orange.shade800,
                           ),
                         ],
                       ),
@@ -105,6 +139,14 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Cerrar'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_forever_rounded, color: AppColors.error),
+            tooltip: 'Eliminar Local Definitivamente',
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteRestaurant(r);
+            },
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
@@ -192,6 +234,12 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
                               onPressed: () => _showInspectModal(context, r),
                               icon: const Icon(Icons.search_rounded, size: 16),
                               label: const Text('Ver Ficha 🔍', style: TextStyle(fontSize: 12)),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+                              tooltip: 'Eliminar Restaurante Definitivamente',
+                              onPressed: () => _deleteRestaurant(r),
                             ),
                           ],
                         ),
