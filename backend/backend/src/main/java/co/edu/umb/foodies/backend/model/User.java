@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -70,16 +71,16 @@ public class User {
         joinColumns = @JoinColumn(name = "seguidor_id"),
         inverseJoinColumns = @JoinColumn(name = "seguido_id")
     )
-    private Set<User> following;
+    @Builder.Default
+    private Set<User> following = new HashSet<>();
 
     @ManyToMany(mappedBy = "following")
-    private Set<User> followers;
+    @Builder.Default
+    private Set<User> followers = new HashSet<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<Post> posts;
-
-    @ManyToMany(mappedBy = "likedBy")
-    private Set<Post> likedPosts;
+    @Builder.Default
+    private Set<Post> posts = new HashSet<>();
 
     @PrePersist
     public void prePersist() {
@@ -87,6 +88,9 @@ public class User {
         if (role == null) role = Role.foodie;
         if (isActive == null) isActive = true;
         if (emailVerified == null) emailVerified = false;
+        if (following == null) following = new HashSet<>();
+        if (followers == null) followers = new HashSet<>();
+        if (posts == null) posts = new HashSet<>();
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;
