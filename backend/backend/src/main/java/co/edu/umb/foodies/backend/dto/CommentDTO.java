@@ -23,14 +23,15 @@ public class CommentDTO {
     private LocalDateTime createdAt;
 
     public static CommentDTO from(Comment comment, User user) {
+        if (comment == null) return null;
         return CommentDTO.builder()
                 .id(comment.getId())
                 .postId(comment.getPostId())
-                .authorId(comment.getClienteId())
-                .authorName(user != null ? user.getUsername() : "Usuario")
+                .authorId(comment.getClienteId() != null ? comment.getClienteId() : "")
+                .authorName(user != null && user.getUsername() != null ? user.getUsername() : "Usuario")
                 .authorAvatarUrl(user != null ? user.getAvatarUrl() : null)
-                .content(comment.getContent())
-                .createdAt(comment.getCreatedAt())
+                .content(comment.getContent() != null ? comment.getContent() : "")
+                .createdAt(comment.getCreatedAt() != null ? comment.getCreatedAt() : LocalDateTime.now())
                 .build();
     }
 }
