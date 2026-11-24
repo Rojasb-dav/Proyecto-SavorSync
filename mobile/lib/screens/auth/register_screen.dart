@@ -86,7 +86,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ).animate(delay: 80.ms).fadeIn(duration: 400.ms),
                 const SizedBox(height: 24),
 
-                // Selector de Rol de Usuario
+                // Selector de Rol de Usuario (SÓLO PERFILES PÚBLICOS)
                 Text('Tipo de Perfil / Rol *', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
                 const SizedBox(height: 8),
                 _animated(
@@ -120,16 +120,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 Icon(Icons.storefront_rounded, color: Colors.orange, size: 20),
                                 SizedBox(width: 10),
                                 Text('Administrador de Restaurante 🏪'),
-                              ],
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'moderador',
-                            child: Row(
-                              children: [
-                                Icon(Icons.shield_rounded, color: Colors.blue, size: 20),
-                                SizedBox(width: 10),
-                                Text('Moderador / Atención de PQRS 🛡️'),
                               ],
                             ),
                           ),
