@@ -8,14 +8,15 @@ import '../../providers/auth_provider.dart';
 import '../admin/analytics_dashboard.dart';
 import '../admin/menu_management_screen.dart';
 import '../admin/moderation_screen.dart';
+import '../admin/moderator_profile_screen.dart';
 import '../admin/pqrs_management_screen.dart';
 import '../admin/restaurant_admin_dashboard.dart';
 import '../admin/restaurant_approvals_screen.dart';
+import '../admin/restaurant_profile_screen.dart';
 import '../admin/restaurant_reservations_screen.dart';
 import '../admin/user_governance_screen.dart';
 import '../auth/login_screen.dart';
 import '../home/home_screen.dart';
-import '../profile/profile_screen.dart';
 
 class RoleBasedShell extends StatefulWidget {
   const RoleBasedShell({super.key});
@@ -54,7 +55,7 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
         const MenuManagementScreen(),
         const RestaurantReservationsScreen(),
         const AnalyticsDashboard(),
-        const ProfileScreen(),
+        const RestaurantProfileScreen(),
       ];
 
       final currentIndex = _webRailIndex >= pages.length ? 0 : _webRailIndex;
@@ -85,9 +86,9 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
             label: Text('Analítica BI'),
           ),
           NavigationRailDestination(
-            icon: Icon(Icons.person_rounded),
-            selectedIcon: Icon(Icons.person_rounded, color: AppColors.primary),
-            label: Text('Mi Perfil'),
+            icon: Icon(Icons.store_rounded),
+            selectedIcon: Icon(Icons.store_rounded, color: AppColors.primary),
+            label: Text('Perfil Local'),
           ),
         ],
         bodyPages: pages,
@@ -101,7 +102,7 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
         RestaurantApprovalsScreen(),
         UserGovernanceScreen(),
         PqrsManagementScreen(),
-        ProfileScreen(),
+        ModeratorProfileScreen(),
       ];
 
       final currentIndex = _webRailIndex >= pages.length ? 0 : _webRailIndex;
@@ -128,8 +129,8 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
             label: Text('PQRS'),
           ),
           NavigationRailDestination(
-            icon: Icon(Icons.person_rounded),
-            label: Text('Mi Perfil'),
+            icon: Icon(Icons.shield_rounded),
+            label: Text('Perfil Moderador'),
           ),
         ],
         bodyPages: pages,
