@@ -197,11 +197,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             child: Column(
               children: [
                 Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.bottomCenter,
                   children: [
                     Container(
-                      height: 160,
+                      height: 140,
                       width: double.infinity,
                       decoration: const BoxDecoration(
                         color: AppColors.primary,
@@ -209,29 +207,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       child: const Center(
                         child: Icon(Icons.restaurant_rounded, color: Colors.white24, size: 60),
                       ),
-                    ),
-                    Positioned(
-                      bottom: -40,
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: cardColor,
-                        ),
-                        child: CircleAvatar(
-                          radius: 46,
-                          backgroundColor: cardColor,
-                          backgroundImage: user.avatarUrl != null
-                              ? CachedNetworkImageProvider(user.avatarUrl!)
-                              : null,
-                          child: user.avatarUrl == null
-                              ? Text(
-                                  cleanUsername.isNotEmpty ? cleanUsername[0].toUpperCase() : '?',
-                                  style: AppTextStyles.displayMedium.copyWith(color: AppColors.primary),
-                                )
-                              : null,
-                        ),
-                      ).animate().fadeIn(duration: 350.ms).scale(begin: const Offset(0.85, 0.85)),
                     ),
                     if (isMe)
                       Positioned(
@@ -271,105 +246,133 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       ),
                   ],
                 ),
-                const SizedBox(height: 48),
 
-                Text(user.fullName ?? cleanUsername, style: AppTextStyles.headline.copyWith(color: textColor)),
-                Text('@$cleanUsername', style: AppTextStyles.subtle.copyWith(color: textColor.withValues(alpha: 0.7))),
-                _buildRoleBadge(user.role),
-
-                if (user.bio != null && user.bio!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(
-                      user.bio!,
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.body.copyWith(color: textColor),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _Stat(label: 'Publicaciones', value: '${_posts.length}', textColor: textColor),
-                    _Stat(label: 'Seguidores', value: '${user.followersCount}', textColor: textColor),
-                    _Stat(label: 'Seguidos', value: '${user.followingCount}', textColor: textColor),
-                  ],
-                ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1),
-                const SizedBox(height: 16),
-
-                if (isMe) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      children: [
-                        OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Theme.of(context).dividerColor),
-                            foregroundColor: textColor,
-                            minimumSize: const Size.fromHeight(42),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          onPressed: () async {
-                            final updated = await Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-                            );
-                            if (updated == true) _loadData();
-                          },
-                          child: Text('Editar perfil & Portada', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                Transform.translate(
+                  offset: const Offset(0, -40),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: cardColor,
                         ),
-                        if (user.role == 'restaurant_admin' || user.role == 'RESTAURANT_ADMIN') ...[
-                          const SizedBox(height: 8),
-                          ElevatedButton.icon(
+                        child: CircleAvatar(
+                          radius: 46,
+                          backgroundColor: cardColor,
+                          backgroundImage: (user.avatarUrl != null && user.avatarUrl!.isNotEmpty)
+                              ? CachedNetworkImageProvider(user.avatarUrl!)
+                              : null,
+                          child: (user.avatarUrl == null || user.avatarUrl!.isEmpty)
+                              ? Text(
+                                  cleanUsername.isNotEmpty ? cleanUsername[0].toUpperCase() : '?',
+                                  style: AppTextStyles.displayMedium.copyWith(color: AppColors.primary),
+                                )
+                              : null,
+                        ),
+                      ).animate().fadeIn(duration: 350.ms).scale(begin: const Offset(0.85, 0.85)),
+
+                      const SizedBox(height: 8),
+                      Text(user.fullName ?? cleanUsername, style: AppTextStyles.headline.copyWith(color: textColor)),
+                      Text('@$cleanUsername', style: AppTextStyles.subtle.copyWith(color: textColor.withValues(alpha: 0.7))),
+                      _buildRoleBadge(user.role),
+
+                      if (user.bio != null && user.bio!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Text(
+                            user.bio!,
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.body.copyWith(color: textColor),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _Stat(label: 'Publicaciones', value: '${_posts.length}', textColor: textColor),
+                          _Stat(label: 'Seguidores', value: '${user.followersCount}', textColor: textColor),
+                          _Stat(label: 'Seguidos', value: '${user.followingCount}', textColor: textColor),
+                        ],
+                      ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1),
+                      const SizedBox(height: 16),
+
+                      if (isMe) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            children: [
+                              OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  side: BorderSide(color: Theme.of(context).dividerColor),
+                                  foregroundColor: textColor,
+                                  minimumSize: const Size.fromHeight(42),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                onPressed: () async {
+                                  final updated = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                                  );
+                                  if (updated == true) _loadData();
+                                },
+                                child: Text('Editar perfil & Portada', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                              ),
+                              if (user.role == 'restaurant_admin' || user.role == 'RESTAURANT_ADMIN') ...[
+                                const SizedBox(height: 8),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    minimumSize: const Size.fromHeight(42),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => const RestaurantAdminDashboard()),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.storefront_rounded, color: Colors.white, size: 18),
+                                  label: const Text('Panel de Mi Restaurante', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ] else
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              minimumSize: const Size.fromHeight(42),
+                              backgroundColor: _isFollowing ? Colors.grey.shade400 : AppColors.primary,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(44),
+                              elevation: 0,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const RestaurantAdminDashboard()),
-                              );
-                            },
-                            icon: const Icon(Icons.storefront_rounded, color: Colors.white, size: 18),
-                            label: const Text('Panel de Mi Restaurante', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            onPressed: _toggleFollow,
+                            child: Text(_isFollowing ? 'Siguiendo ✅' : 'Seguir', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                           ),
+                        ),
+
+                      const SizedBox(height: 16),
+
+                      TabBar(
+                        controller: _tabController,
+                        labelColor: AppColors.primary,
+                        unselectedLabelColor: textColor.withValues(alpha: 0.6),
+                        indicatorColor: AppColors.primary,
+                        tabs: const [
+                          Tab(icon: Icon(Icons.grid_on_rounded), text: 'Reseñas'),
+                          Tab(icon: Icon(Icons.favorite_rounded), text: 'Favoritos'),
+                          Tab(icon: Icon(Icons.confirmation_number_rounded), text: 'Reservas QR'),
                         ],
-                      ],
-                    ),
-                  ),
-                ] else
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isFollowing ? Colors.grey.shade400 : AppColors.primary,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(44),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: _toggleFollow,
-                      child: Text(_isFollowing ? 'Siguiendo ✅' : 'Seguir', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    ),
+                    ],
                   ),
-
-                const SizedBox(height: 16),
-
-                TabBar(
-                  controller: _tabController,
-                  labelColor: AppColors.primary,
-                  unselectedLabelColor: textColor.withValues(alpha: 0.6),
-                  indicatorColor: AppColors.primary,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.grid_on_rounded), text: 'Reseñas'),
-                    Tab(icon: Icon(Icons.favorite_rounded), text: 'Favoritos'),
-                    Tab(icon: Icon(Icons.confirmation_number_rounded), text: 'Reservas QR'),
-                  ],
                 ),
               ],
             ),
