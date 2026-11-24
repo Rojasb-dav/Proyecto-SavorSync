@@ -3,11 +3,12 @@ package co.edu.umb.foodies.backend.controller;
 import co.edu.umb.foodies.backend.model.MenuItem;
 import co.edu.umb.foodies.backend.model.Restaurant;
 import co.edu.umb.foodies.backend.repository.MenuItemRepository;
+import co.edu.umb.foodies.backend.repository.ReservationRepository;
 import co.edu.umb.foodies.backend.repository.RestaurantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.util.List;
 
@@ -18,6 +19,7 @@ public class RestaurantController {
 
     private final RestaurantRepository restaurantRepository;
     private final MenuItemRepository menuItemRepository;
+    private final ReservationRepository reservationRepository;
 
     @GetMapping
     public ResponseEntity<List<Restaurant>> getAllRestaurants() {
@@ -44,10 +46,18 @@ public class RestaurantController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    @Transactional
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteRestaurant(@PathVariable String id) {
-        restaurantRepository.deleteById(id);
-        return ResponseEntity.ok().build();
+        try {
+            menuItemRepository.findByRestaurantId(id).forEach(menuItemRepository::delete);
+            reservationRepository.findByRestaurantId(id).forEach(reservationRepository::delete);
+            restaurantRepository.deleteById(id);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            System.err.println("WARN: Error al borrar restaurante: " + e.getMessage());
+            return ResponseEntity.status(500).build();
+        }
     }
 
     @GetMapping("/{id}/menu")
