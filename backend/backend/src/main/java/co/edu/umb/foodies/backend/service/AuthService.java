@@ -50,19 +50,8 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
         }
 
+        // FALLO-03 Fix: El registro público asigna obligatoriamente el rol 'foodie'
         User.Role role = User.Role.foodie;
-        if (req.getRole() != null && !req.getRole().isBlank()) {
-            try {
-                role = User.Role.valueOf(req.getRole().trim().toLowerCase());
-            } catch (IllegalArgumentException ex) {
-                role = User.Role.foodie;
-            }
-        }
-
-        String platformHeader = httpReq != null ? httpReq.getHeader("X-Platform") : null;
-        if ("mobile".equalsIgnoreCase(platformHeader) && (role == User.Role.restaurant_admin || role == User.Role.moderador || role == User.Role.admin_sistema)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: Los perfiles de Administrador y Moderador sólo pueden ingresar desde la plataforma Web en computador.");
-        }
 
         User user = User.builder()
                 .id(UUID.randomUUID().toString())
@@ -118,107 +107,88 @@ public class AuthService {
             try {
                 passwordResetTokenRepository.deleteByEmail(user.getEmail());
                 passwordResetTokenRepository.flush();
-            } catch (Exception ignored) {}
 
-            passwordResetTokenRepository.saveAndFlush(PasswordResetToken.builder()
-                    .email(user.getEmail())
-                    .code(code)
-                    .expiresAt(LocalDateTime.now().plusHours(24))
-                    .build());
+                PasswordResetToken resetToken = PasswordResetToken.builder()
+                        .id(UUID.randomUUID().toString())
+                        .email(user.getEmail())
+                        .code(code)
+                        .expiresAt(LocalDateTime.now().plusMinutes(15))
+                        .build();
 
-            CompletableFuture.runAsync(() -> {
-                try {
-                    MimeMessage mimeMessage = mailSender.createMimeMessage();
-                    MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-                    helper.setFrom("SavorSync <" + senderEmail + ">");
-                    helper.setTo(user.getEmail());
-                    helper.setSubject("🔑 Código de Recuperación de Contraseña - SavorSync");
+                passwordResetTokenRepository.save(resetToken);
 
-                    String htmlBody = "<html>" +
-                        "<body style='font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px; color: #333;'>" +
-                        "<div style='max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);'>" +
-                        "<div style='background-color: #E65100; padding: 24px; text-align: center; color: #ffffff;'>" +
-                        "<h1 style='margin: 0; font-size: 24px; font-weight: bold;'>🥑 SavorSync</h1>" +
-                        "<p style='margin: 4px 0 0 0; font-size: 14px; opacity: 0.9;'>Red Social Gastronómica de Bogotá</p>" +
-                        "</div>" +
-                        "<div style='padding: 30px;'>" +
-                        "<h2 style='color: #222; margin-top: 0;'>Restablece tu contraseña</h2>" +
-                        "<p>Hola <strong>" + user.getFullName() + "</strong> 👋,</p>" +
-                        "<p>Hemos recibido una solicitud para restablecer la contraseña asociada a tu cuenta en <strong>SavorSync</strong>.</p>" +
-                        "<p>Usa el siguiente código de verificación de 6 dígitos en la aplicación:</p>" +
-                        "<div style='background-color: #FFF3E0; border: 2px dashed #E65100; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;'>" +
-                        "<span style='font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #E65100; font-family: monospace;'>" + code + "</span>" +
-                        "</div>" +
-                        "<p style='font-size: 13px; color: #666;'>⏰ Este código de verificación es válido durante <strong>15 minutos</strong>.</p>" +
-                        "<p style='font-size: 13px; color: #666;'>🔒 Si no solicitaste este cambio, puedes ignorar este correo de forma segura. Tu contraseña permanecerá intacta.</p>" +
-                        "<hr style='border: none; border-top: 1px solid #eee; margin: 24px 0;' />" +
-                        "<p style='margin: 0; font-size: 12px; color: #888; text-align: center;'>SavorSync Bogotá • Tu experiencia gastronómica conectada</p>" +
-                        "</div>" +
-                        "</div>" +
-                        "</body>" +
-                        "</html>";
-
-                    helper.setText(htmlBody, true);
-                    mailSender.send(mimeMessage);
-                } catch (Exception e) {
-                    System.err.println("WARN: Fallo al enviar correo HTML con MimeMessage: " + e.getMessage());
-                }
-            });
+                CompletableFuture.runAsync(() -> sendResetEmail(user.getEmail(), code));
+            } catch (Exception e) {
+                System.err.println("WARN: Error en forgotPassword: " + e.getMessage());
+            }
         });
     }
 
     @Transactional
-    public void resetPassword(String email, String code, String newPassword) {
-        String cleanEmail = email.trim().toLowerCase();
-        String cleanCode = code.trim();
+    public void resetPassword(String email, String token, String newPassword) {
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByEmailAndCode(email.trim().toLowerCase(), token.trim())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código de verificación inválido o expirado"));
 
-        PasswordResetToken token = passwordResetTokenRepository.findByEmailAndCode(cleanEmail, cleanCode)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorrecto"));
-
-        if (token.getExpiresAt().isBefore(LocalDateTime.now())) {
-            passwordResetTokenRepository.delete(token);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El código ha expirado");
+        if (resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            passwordResetTokenRepository.delete(resetToken);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El código de verificación ha expirado");
         }
 
-        User user = userRepository.findByEmail(cleanEmail)
+        User user = userRepository.findByEmail(email.trim().toLowerCase())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
-        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setPassword(passwordEncoder.encode(newPassword.trim()));
         userRepository.save(user);
-        
-        passwordResetTokenRepository.deleteByEmail(cleanEmail);
+
+        passwordResetTokenRepository.delete(resetToken);
     }
 
     private AuthResponse buildAuthResponse(User user, HttpServletRequest httpReq) {
         String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
 
         try {
-            String truncatedSessionToken = token;
-            if (truncatedSessionToken.length() > 190) {
-                truncatedSessionToken = truncatedSessionToken.substring(0, 190);
-            }
-
             AuthSession session = AuthSession.builder()
                     .id(UUID.randomUUID().toString())
                     .userId(user.getId())
-                    .sessionToken(truncatedSessionToken)
-                    .platform(AuthSession.Platform.mobile)
+                    .sessionToken(token)
                     .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
-                    .expiresAt(LocalDateTime.now().plusNanos(jwtUtil.getExpirationMs() * 1_000_000L))
                     .isActive(true)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
+                    .expiresAt(LocalDateTime.now().plusDays(1))
                     .build();
+
             authSessionRepository.save(session);
         } catch (Exception e) {
-            System.err.println("WARN: Registro de sesión opcional omitido: " + e.getMessage());
+            System.err.println("WARN: No se pudo guardar la sesión de autenticación: " + e.getMessage());
         }
 
         return AuthResponse.builder()
                 .token(token)
-                .tokenType("Bearer")
-                .expiresInMs(jwtUtil.getExpirationMs())
-                .user(UserResponse.from(user, user.getId()))
+                .user(UserResponse.from(user))
                 .build();
+    }
+
+    private void sendResetEmail(String toEmail, String code) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(senderEmail);
+            helper.setTo(toEmail);
+            helper.setSubject("Código de Recuperación de Contraseña - SavorSync 🔐");
+
+            String htmlBody = "<div style='font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9;'>"
+                    + "<h2 style='color: #FF5A5F;'>SavorSync 🍔</h2>"
+                    + "<p>Hola,</p>"
+                    + "<p>Hemos recibido una solicitud para restablecer tu contraseña en SavorSync.</p>"
+                    + "<p>Tu código de verificación de 6 dígitos es:</p>"
+                    + "<h1 style='color: #333; letter-spacing: 5px; background: #eee; padding: 10px; display: inline-block;'>" + code + "</h1>"
+                    + "<p>Este código vencerá en 15 minutos. Si no solicitaste este cambio, puedes ignorar este mensaje.</p>"
+                    + "<br><p>El equipo de SavorSync</p>"
+                    + "</div>";
+
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
+        } catch (Exception e) {
+            System.err.println("ERROR enviando correo SMTP: " + e.getMessage());
+        }
     }
 }

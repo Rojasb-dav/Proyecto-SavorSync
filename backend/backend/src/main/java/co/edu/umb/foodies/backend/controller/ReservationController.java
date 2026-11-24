@@ -2,10 +2,14 @@ package co.edu.umb.foodies.backend.controller;
 
 import co.edu.umb.foodies.backend.model.Reservation;
 import co.edu.umb.foodies.backend.repository.ReservationRepository;
+import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -16,14 +20,19 @@ import java.util.Map;
 public class ReservationController {
 
     private final ReservationRepository reservationRepository;
+    private final JwtUtil jwtUtil;
 
     @GetMapping
     public ResponseEntity<List<Reservation>> getReservations(
             @RequestParam(required = false) String userId,
-            @RequestParam(required = false) String restaurantId) {
+            @RequestParam(required = false) String restaurantId,
+            HttpServletRequest request) {
 
-        if (userId != null && !userId.isBlank()) {
-            return ResponseEntity.ok(reservationRepository.findByClienteId(userId));
+        String authUserId = getUserIdFromRequest(request);
+        String targetUserId = (userId != null && !userId.isBlank()) ? userId : authUserId;
+
+        if (targetUserId != null && !targetUserId.isBlank()) {
+            return ResponseEntity.ok(reservationRepository.findByClienteId(targetUserId));
         }
         if (restaurantId != null && !restaurantId.isBlank()) {
             return ResponseEntity.ok(reservationRepository.findByRestaurantId(restaurantId));
@@ -32,10 +41,15 @@ public class ReservationController {
     }
 
     @PostMapping
-    public ResponseEntity<Reservation> createReservation(@RequestBody Reservation reservation) {
-        if (reservation.getEstado() == null) {
-            reservation.setEstado(Reservation.ReservationStatus.pendiente);
+    public ResponseEntity<Reservation> createReservation(@RequestBody Reservation reservation, HttpServletRequest request) {
+        String authUserId = getUserIdFromRequest(request);
+        if (authUserId != null && !authUserId.isBlank()) {
+            reservation.setClienteId(authUserId);
+        } else if (reservation.getClienteId() == null || reservation.getClienteId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Debes iniciar sesión para realizar una reserva");
         }
+
+        reservation.setEstado(Reservation.ReservationStatus.pendiente);
         return ResponseEntity.ok(reservationRepository.save(reservation));
     }
 
@@ -67,6 +81,15 @@ public class ReservationController {
             if (status.name().equalsIgnoreCase(clean)) {
                 return status;
             }
+        }
+        return null;
+    }
+
+    private String getUserIdFromRequest(HttpServletRequest request) {
+        if (request == null) return null;
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return jwtUtil.getUserId(header.substring(7));
         }
         return null;
     }
