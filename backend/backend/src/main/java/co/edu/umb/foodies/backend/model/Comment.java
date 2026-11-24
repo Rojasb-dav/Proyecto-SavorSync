@@ -50,9 +50,9 @@ public class Comment {
 
     @JsonProperty("status")
     @JsonAlias({"estado", "status"})
-    @Enumerated(EnumType.STRING)
-    @Column(name = "estado")
-    private CommentStatus status;
+    @Column(name = "estado", length = 50)
+    @Builder.Default
+    private String status = "activo";
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -63,7 +63,7 @@ public class Comment {
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID().toString();
-        if (status == null) status = CommentStatus.activo;
+        if (status == null) status = "activo";
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;

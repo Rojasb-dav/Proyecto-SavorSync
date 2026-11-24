@@ -122,7 +122,7 @@ public class PostController {
                     .postId(postId)
                     .clienteId(author.getId())
                     .content(content)
-                    .status(Comment.CommentStatus.activo)
+                    .status("activo")
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
                     .build();
