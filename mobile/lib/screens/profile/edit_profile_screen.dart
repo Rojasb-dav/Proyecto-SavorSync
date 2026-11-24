@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/cloudinary_service.dart';
 
@@ -18,6 +19,7 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
+  final AuthService _authService = AuthService();
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _usernameController;
@@ -56,6 +58,64 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<void> _linkGoogleAccount() async {
+    try {
+      final result = await _authService.signInWithGoogle();
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.link_rounded, color: Colors.green, size: 26),
+              const SizedBox(width: 10),
+              Expanded(child: Text('¡Cuenta de Google Enlazada! 🔗', style: AppTextStyles.title)),
+            ],
+          ),
+          content: Text(
+            'Tu perfil de Foodie ha sido enlazado exitosamente con la cuenta verificada de Google: ${result.user.email}. Ahora podrás iniciar sesión con un solo clic usando el botón de Google.',
+            style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Excelente', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.orange, size: 26),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Aviso de Vinculación', style: AppTextStyles.title)),
+            ],
+          ),
+          content: Text(
+            e.toString().replaceAll('Exception: ', ''),
+            style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Entendido', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final user = context.read<AuthProvider>().user;
@@ -86,7 +146,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       };
 
       try {
-        await _apiService.dio.put('/api/users/${user.id}', data: updateData);
+        await _apiService.dio.put('/users/${user.id}', data: updateData);
       } catch (_) {}
 
       if (!mounted) return;
@@ -117,6 +177,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    final isFoodie = user?.role == 'foodie' || user?.role == 'FOODIE';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Editar Perfil'),
@@ -239,6 +302,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 maxLines: 3,
                 decoration: const InputDecoration(hintText: 'Cuéntale a la comunidad foodie sobre tus gustos culinarios...'),
               ),
+
+              if (isFoodie) ...[
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 12),
+                Text('Enlazar Cuenta de Google 🔗', style: AppTextStyles.title),
+                const SizedBox(height: 6),
+                Text('Vincula tu perfil de SavorSync a tu cuenta de Google para iniciar sesión con un solo clic.', style: AppTextStyles.subtle),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _linkGoogleAccount,
+                  icon: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
+                  label: const Text('Enlazar con Google ahora 🔗', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                ),
+              ],
             ],
           ),
         ),
