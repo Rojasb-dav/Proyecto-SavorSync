@@ -38,32 +38,32 @@ class RestaurantModel {
   });
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) {
-    String st = (json['status'] as String? ?? 'pendiente').toLowerCase();
+    String st = ((json['status'] ?? json['estado']) as String? ?? 'pendiente').toLowerCase();
     if (st == 'pending') st = 'pendiente';
     if (st == 'active') st = 'activo';
 
-    final rawAdmins = json['adminIds'] as List<dynamic>?;
+    final rawAdmins = (json['adminIds'] ?? json['admin_ids']) as List<dynamic>?;
     final List<String> admins = rawAdmins != null ? rawAdmins.map((e) => e.toString()).toList() : [];
 
     return RestaurantModel(
       id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      description: json['description'] as String? ?? '',
-      address: json['address'] as String? ?? '',
-      category: json['category'] as String? ?? 'Gastronomía',
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 4.60971,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? -74.08175,
-      ratingAverage: (json['ratingAverage'] as num?)?.toDouble() ?? 0.0,
-      reviewsCount: (json['reviewsCount'] as num?)?.toInt() ?? 0,
-      viewsCount: (json['viewsCount'] as num?)?.toInt() ?? 0,
-      favoritesCount: (json['favoritesCount'] as num?)?.toInt() ?? 0,
-      imageUrl: json['imageUrl'] as String? ??
+      name: (json['name'] ?? json['nombre']) as String? ?? '',
+      description: (json['description'] ?? json['descripcion']) as String? ?? '',
+      address: (json['address'] ?? json['direccion']) as String? ?? '',
+      category: (json['category'] ?? json['categoria']) as String? ?? 'Gastronomía',
+      latitude: ((json['latitude'] ?? json['latitud']) as num?)?.toDouble() ?? 4.60971,
+      longitude: ((json['longitude'] ?? json['longitud']) as num?)?.toDouble() ?? -74.08175,
+      ratingAverage: ((json['ratingAverage'] ?? json['rating_promedio']) as num?)?.toDouble() ?? 0.0,
+      reviewsCount: ((json['reviewsCount'] ?? json['total_resenas']) as num?)?.toInt() ?? 0,
+      viewsCount: ((json['viewsCount'] ?? json['visitas_perfil']) as num?)?.toInt() ?? 0,
+      favoritesCount: ((json['favoritesCount'] ?? json['total_likes']) as num?)?.toInt() ?? 0,
+      imageUrl: (json['imageUrl'] ?? json['url'] ?? json['image_url']) as String? ??
           'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80',
-      phone: json['phone'] as String? ?? '',
-      ownerId: json['ownerId'] as String? ?? '',
+      phone: (json['phone'] ?? json['telefono']) as String? ?? '',
+      ownerId: (json['ownerId'] ?? json['owner_id']) as String? ?? '',
       adminIds: admins,
       status: st,
-      isFavorite: json['isFavorite'] as bool? ?? false,
+      isFavorite: (json['isFavorite'] ?? json['is_favorite']) as bool? ?? false,
     );
   }
 

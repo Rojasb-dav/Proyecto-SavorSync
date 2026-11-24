@@ -62,22 +62,22 @@ class PostModel {
 
   factory PostModel.fromJson(Map<String, dynamic> json) {
     return PostModel(
-      id: json['id'] as String,
-      userId: json['userId'] as String,
-      username: json['username'] as String,
-      fullName: json['fullName'] as String? ?? '',
-      userAvatarUrl: json['userAvatarUrl'] as String?,
-      restaurantId: json['restaurantId'] as String?,
-      restaurantName: json['restaurantName'] as String? ?? '',
-      restaurantAddress: json['restaurantAddress'] as String? ?? '',
-      content: json['content'] as String? ?? '',
-      rating: (json['rating'] as num?)?.toDouble() ?? 0,
-      imageUrl: json['imageUrl'] as String? ?? '',
-      likesCount: (json['likesCount'] as num?)?.toInt() ?? 0,
-      commentsCount: (json['commentsCount'] as num?)?.toInt() ?? 0,
-      likedByMe: json['likedByMe'] as bool? ?? false,
-      savedByMe: json['savedByMe'] as bool? ?? false,
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      id: (json['id'] as String?) ?? '',
+      userId: (json['userId'] ?? json['cliente_id']) as String? ?? '',
+      username: (json['username'] ?? json['author_username']) as String? ?? '',
+      fullName: (json['fullName'] ?? json['full_name']) as String? ?? '',
+      userAvatarUrl: (json['userAvatarUrl'] ?? json['avatar_url']) as String?,
+      restaurantId: (json['restaurantId'] ?? json['restaurante_id']) as String?,
+      restaurantName: (json['restaurantName'] ?? json['restaurante_nombre']) as String? ?? '',
+      restaurantAddress: (json['restaurantAddress'] ?? json['direccion']) as String? ?? '',
+      content: (json['content'] ?? json['contenido']) as String? ?? '',
+      rating: ((json['rating'] ?? json['calificacion']) as num?)?.toDouble() ?? 0.0,
+      imageUrl: (json['imageUrl'] ?? json['image_url']) as String? ?? '',
+      likesCount: ((json['likesCount'] ?? json['conteo_likes']) as num?)?.toInt() ?? 0,
+      commentsCount: ((json['commentsCount'] ?? json['conteo_comentarios']) as num?)?.toInt() ?? 0,
+      likedByMe: (json['likedByMe'] ?? json['liked_by_me']) as bool? ?? false,
+      savedByMe: (json['savedByMe'] ?? json['saved_by_me']) as bool? ?? false,
+      createdAt: DateTime.tryParse((json['createdAt'] ?? json['created_at']) as String? ?? '') ?? DateTime.now(),
     );
   }
 }

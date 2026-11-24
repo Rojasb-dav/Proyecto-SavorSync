@@ -1,10 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../core/services/notification_service.dart';
 import '../../models/restaurant_model.dart';
 import '../../providers/auth_provider.dart';
@@ -21,6 +21,7 @@ class CreateReservationModal extends StatefulWidget {
 class _CreateReservationModalState extends State<CreateReservationModal> {
   final _formKey = GlobalKey<FormState>();
   final _notasCtrl = TextEditingController();
+  final ApiService _apiService = ApiService();
 
   DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _selectedTime = const TimeOfDay(hour: 13, minute: 0);
@@ -44,24 +45,19 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
     try {
       final fechaStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
       final horaStr = '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
-
-      final resRef = FirebaseFirestore.instance.collection('reservations').doc();
       final clienteNombre = user.fullName ?? user.username;
 
-      final data = {
+      final res = await _apiService.createReservation({
         'restaurantId': widget.restaurant.id,
         'restaurantName': widget.restaurant.name,
-        'clienteId': user.id,
-        'clienteNombre': clienteNombre,
-        'numPersonas': _numPersonas,
-        'fechaReserva': fechaStr,
-        'horaReserva': horaStr,
-        'notas': _notasCtrl.text.trim(),
-        'estado': 'pendiente',
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      await resRef.set(data);
+        'userId': user.id,
+        'userName': clienteNombre,
+        'userPhone': user.phone ?? '+57 300 000 0000',
+        'guests': _numPersonas,
+        'date': fechaStr,
+        'time': horaStr,
+        'specialNotes': _notasCtrl.text.trim(),
+      });
 
       if (widget.restaurant.ownerId.isNotEmpty) {
         NotificationService.sendNotification(
@@ -69,26 +65,18 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
           title: 'Nueva Solicitud de Reserva 🏪',
           body: 'Nueva reserva de $clienteNombre para $_numPersonas personas el $fechaStr.',
           type: 'reservation',
-          targetId: resRef.id,
+          targetId: res.id,
         );
       }
-
-      try {
-        await FirebaseFirestore.instance
-            .collection('restaurants')
-            .doc(widget.restaurant.id)
-            .update({'analytics.totalReservas': FieldValue.increment(1)});
-      } catch (_) {}
 
       if (!mounted) return;
       setState(() => _loading = false);
       Navigator.pop(context);
 
-      // Mostrar Ticket Digital con Código QR
       showDialog(
         context: context,
         builder: (_) => ReservationTicketModal(
-          reservationId: resRef.id,
+          reservationId: res.id,
           restaurantName: widget.restaurant.name,
           clienteNombre: clienteNombre,
           fechaReserva: fechaStr,

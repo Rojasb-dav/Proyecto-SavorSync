@@ -1,11 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants/colors.dart';
 import '../core/constants/text_styles.dart';
-import '../core/services/notification_service.dart';
+import '../core/services/api_service.dart';
 import '../models/comment_model.dart';
 import '../providers/auth_provider.dart';
 import '../screens/profile/profile_screen.dart';
@@ -20,12 +19,35 @@ class CommentsModal extends StatefulWidget {
 
 class _CommentsModalState extends State<CommentsModal> {
   final TextEditingController _commentCtrl = TextEditingController();
+  final ApiService _apiService = ApiService();
+  List<CommentModel> _comments = [];
+  bool _loading = true;
   bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComments();
+  }
 
   @override
   void dispose() {
     _commentCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadComments() async {
+    try {
+      final list = await _apiService.getComments(widget.postId);
+      if (mounted) {
+        setState(() {
+          _comments = list;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _sendComment() async {
@@ -39,40 +61,13 @@ class _CommentsModalState extends State<CommentsModal> {
     _commentCtrl.clear();
 
     try {
-      final postRef = FirebaseFirestore.instance.collection('posts').doc(widget.postId);
-      final commentRef = postRef.collection('comments').doc();
-
-      final comment = CommentModel(
-        id: commentRef.id,
-        postId: widget.postId,
-        authorId: user.id,
-        authorName: user.username.isNotEmpty ? user.username : 'Usuario',
-        authorAvatarUrl: user.avatarUrl,
-        content: text,
-        createdAt: DateTime.now(),
-      );
-
-      // Guardar comentario e incrementar contador en una transacción
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        transaction.set(commentRef, comment.toJson());
-        transaction.update(postRef, {'commentsCount': FieldValue.increment(1)});
+      await _apiService.addComment(widget.postId, {
+        'content': text,
+        'authorId': user.id,
+        'authorName': user.username,
       });
 
-      final postDoc = await postRef.get();
-      if (postDoc.exists) {
-        final postData = postDoc.data();
-        final authorId = postData?['userId'] as String? ?? '';
-        final restName = postData?['restaurantName'] as String? ?? 'reseña';
-        if (authorId.isNotEmpty && authorId != user.id) {
-          NotificationService.sendNotification(
-            targetUserId: authorId,
-            title: 'Nuevo Comentario 💬',
-            body: '@${user.username} comentó en tu reseña de $restName',
-            type: 'comment',
-            targetId: widget.postId,
-          );
-        }
-      }
+      await _loadComments();
 
       if (mounted) {
         setState(() => _sending = false);
@@ -127,72 +122,27 @@ class _CommentsModalState extends State<CommentsModal> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('posts')
-                    .doc(widget.postId)
-                    .collection('comments')
-                    .orderBy('createdAt', descending: false)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                  }
-
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.chat_bubble_outline_rounded, size: 48, color: Colors.grey),
-                          const SizedBox(height: 12),
-                          Text('Aún no hay comentarios.', style: AppTextStyles.subtle),
-                          Text('¡Sé el primero en opinar!', style: AppTextStyles.caption),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final comments = snapshot.data!.docs
-                      .map((doc) => CommentModel.fromJson({'id': doc.id, ...doc.data()}))
-                      .toList();
-
-                  return ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: comments.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, i) {
-                      final c = comments[i];
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              if (c.authorId.isEmpty) return;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ProfileScreen(userId: c.authorId),
-                                ),
-                              );
-                            },
-                            child: CircleAvatar(
-                              radius: 18,
-                              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                              backgroundImage: c.authorAvatarUrl != null
-                                  ? CachedNetworkImageProvider(c.authorAvatarUrl!)
-                                  : null,
-                              child: c.authorAvatarUrl == null
-                                  ? Text(
-                                      c.authorName.isNotEmpty ? c.authorName[0].toUpperCase() : '?',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
-                                    )
-                                  : null,
-                            ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : _comments.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.chat_bubble_outline_rounded, size: 48, color: Colors.grey),
+                              const SizedBox(height: 12),
+                              Text('Aún no hay comentarios.', style: AppTextStyles.subtle),
+                              Text('¡Sé el primero en opinar!', style: AppTextStyles.caption),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _comments.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          itemBuilder: (context, i) {
+                            final c = _comments[i];
+                            return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 GestureDetector(
@@ -205,19 +155,46 @@ class _CommentsModalState extends State<CommentsModal> {
                                       ),
                                     );
                                   },
-                                  child: Text('@${c.authorName}', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
+                                  child: CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                                    backgroundImage: c.authorAvatarUrl != null
+                                        ? CachedNetworkImageProvider(c.authorAvatarUrl!)
+                                        : null,
+                                    child: c.authorAvatarUrl == null
+                                        ? Text(
+                                            c.authorName.isNotEmpty ? c.authorName[0].toUpperCase() : '?',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
+                                          )
+                                        : null,
+                                  ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(c.content, style: AppTextStyles.body),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      GestureDetector(
+                                        onTap: () {
+                                          if (c.authorId.isEmpty) return;
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => ProfileScreen(userId: c.authorId),
+                                            ),
+                                          );
+                                        },
+                                        child: Text('@${c.authorName}', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(c.content, style: AppTextStyles.body),
+                                    ],
+                                  ),
+                                ),
                               ],
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
+                            );
+                          },
+                        ),
             ),
             SafeArea(
               top: false,

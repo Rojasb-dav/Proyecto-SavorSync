@@ -1,30 +1,28 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../models/notification_model.dart';
+import 'api_service.dart';
 
 class NotificationService {
-  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static final ApiService _api = ApiService();
 
-  /// Enviar una notificación a un usuario objetivo
   static Future<void> sendNotification({
     required String targetUserId,
     required String title,
     required String body,
-    required String type, // 'like', 'comment', 'follow', 'reservation', 'system', 'menu'
+    required String type,
     String? targetId,
   }) async {
     if (targetUserId.isEmpty) return;
     try {
-      await _firestore.collection('notifications').add({
+      await _api.dio.post('/api/notifications', data: {
         'userId': targetUserId,
         'title': title,
         'body': body,
         'type': type,
         'read': false,
-        'createdAt': FieldValue.serverTimestamp(),
         'targetId': targetId,
       });
     } catch (e) {
@@ -32,7 +30,6 @@ class NotificationService {
     }
   }
 
-  /// Notificación masiva para toda la comunidad Foodie
   static Future<void> sendBroadcastNotification({
     required String title,
     required String body,
@@ -40,104 +37,44 @@ class NotificationService {
     String? targetId,
   }) async {
     try {
-      final foodiesSnap = await _firestore
-          .collection('users')
-          .where('role', isEqualTo: 'foodie')
-          .get();
-
-      final batch = _firestore.batch();
-      for (final userDoc in foodiesSnap.docs) {
-        final notifRef = _firestore.collection('notifications').doc();
-        batch.set(notifRef, {
-          'userId': userDoc.id,
-          'title': title,
-          'body': body,
-          'type': type,
-          'read': false,
-          'createdAt': FieldValue.serverTimestamp(),
-          'targetId': targetId,
-        });
-      }
-      await batch.commit();
+      await _api.dio.post('/api/notifications/broadcast', data: {
+        'title': title,
+        'body': body,
+        'type': type,
+        'targetId': targetId,
+      });
     } catch (e) {
       debugPrint('Error en broadcast de notificación: $e');
     }
   }
 
-  /// Stream en tiempo real de notificaciones de un usuario
-  static Stream<List<NotificationModel>> streamNotifications(String userId) {
-    return _firestore
-        .collection('notifications')
-        .where('userId', isEqualTo: userId)
-        .snapshots()
-        .map((snapshot) {
-      final list = snapshot.docs.map((doc) {
-        final data = doc.data();
-        final createdAtField = data['createdAt'];
-        DateTime dt = DateTime.now();
-        if (createdAtField is Timestamp) {
-          dt = createdAtField.toDate();
-        }
-        return NotificationModel.fromJson({
-          'id': doc.id,
-          ...data,
-          'createdAt': dt.toIso8601String(),
-        });
-      }).toList();
-
-      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return list;
-    });
+  static Stream<List<NotificationModel>> streamNotifications(String userId) async* {
+    final list = await _api.getNotifications(userId);
+    yield list;
   }
 
-  /// Marcar una notificación como leída
   static Future<void> markAsRead(String notificationId) async {
-    try {
-      await _firestore.collection('notifications').doc(notificationId).update({'read': true});
-    } catch (_) {}
+    await _api.markNotificationRead(notificationId);
   }
 
-  /// Marcar todas las notificaciones como leídas
   static Future<void> markAllAsRead(String userId) async {
     try {
-      final snap = await _firestore
-          .collection('notifications')
-          .where('userId', isEqualTo: userId)
-          .where('read', isEqualTo: false)
-          .get();
-
-      final batch = _firestore.batch();
-      for (final doc in snap.docs) {
-        batch.update(doc.reference, {'read': true});
-      }
-      await batch.commit();
+      await _api.dio.put('/api/notifications/user/$userId/read-all');
     } catch (_) {}
   }
 
-  /// Eliminar una notificación individual
   static Future<void> deleteNotification(String notificationId) async {
     try {
-      await _firestore.collection('notifications').doc(notificationId).delete();
+      await _api.dio.delete('/api/notifications/$notificationId');
     } catch (_) {}
   }
 
-  /// Limpiar/Eliminar todas las notificaciones del usuario
   static Future<void> clearAllNotifications(String userId) async {
     try {
-      final snap = await _firestore
-          .collection('notifications')
-          .where('userId', isEqualTo: userId)
-          .get();
-
-      final batch = _firestore.batch();
-      for (final doc in snap.docs) {
-        batch.delete(doc.reference);
-      }
-      await batch.commit();
+      await _api.dio.delete('/api/notifications/user/$userId');
     } catch (_) {}
   }
 
-  /// Mostrar banner flotante emergente en pantalla (In-App Floating Banner Toast)
   static void showFloatingBanner(
     BuildContext context, {
     required String title,

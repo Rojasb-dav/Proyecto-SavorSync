@@ -10,11 +10,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
+
+    public List<UserResponse> getAllUsers(String authUserId) {
+        return userRepository.findAll().stream()
+                .map(u -> UserResponse.from(u, authUserId))
+                .toList();
+    }
 
     public UserResponse getById(String id, String authUserId) {
         User user = userRepository.findById(id)
@@ -58,6 +66,19 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         user.setAvatarUrl(avatarUrl);
         return UserResponse.from(userRepository.save(user));
+    }
+
+    @Transactional
+    public UserResponse toggleUserStatus(String targetId) {
+        User user = userRepository.findById(targetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        user.setIsActive(!Boolean.TRUE.equals(user.getIsActive()));
+        return UserResponse.from(userRepository.save(user));
+    }
+
+    @Transactional
+    public void deleteUser(String targetId) {
+        userRepository.deleteById(targetId);
     }
 
     @Transactional

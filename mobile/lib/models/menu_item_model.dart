@@ -22,13 +22,13 @@ class MenuItemModel {
   factory MenuItemModel.fromJson(Map<String, dynamic> json) {
     return MenuItemModel(
       id: json['id'] ?? '',
-      restaurantId: json['restaurantId'],
-      name: json['name'] ?? '',
-      description: json['description'] ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
-      category: json['category'] ?? 'Platos Fuertes',
-      imageUrl: json['imageUrl'],
-      isAvailable: json['isAvailable'] ?? true,
+      restaurantId: json['restaurantId'] ?? json['restaurante_id'],
+      name: json['name'] ?? json['nombre'] ?? '',
+      description: json['description'] ?? json['descripcion'] ?? '',
+      price: ((json['price'] ?? json['precio']) as num?)?.toDouble() ?? 0.0,
+      category: json['category'] ?? json['categoria'] ?? 'Platos Fuertes',
+      imageUrl: json['imageUrl'] ?? json['url'],
+      isAvailable: (json['isAvailable'] ?? json['disponible']) as bool? ?? true,
     );
   }
 

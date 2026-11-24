@@ -26,11 +26,11 @@ public class AuthSession {
     @Column(name = "cliente_id", length = 36, nullable = false)
     private String userId;
 
-    @Column(name = "session_token", nullable = false, length = 2000)
+    @Column(name = "session_token", nullable = false, length = 191)
     private String sessionToken;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "plataforma", nullable = false, columnDefinition = "ENUM('mobile','web_restaurante')")
+    @Column(name = "plataforma", nullable = false)
     private Platform platform;
 
     @Column(name = "ip_address", length = 45)
@@ -52,6 +52,7 @@ public class AuthSession {
     public void prePersist() {
         if (id == null) id = UUID.randomUUID().toString();
         if (isActive == null) isActive = true;
+        if (platform == null) platform = Platform.mobile;
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;

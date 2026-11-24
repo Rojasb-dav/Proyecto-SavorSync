@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class CommentModel {
   final String id;
   final String postId;
@@ -20,21 +18,19 @@ class CommentModel {
   });
 
   factory CommentModel.fromJson(Map<String, dynamic> json) {
-    final createdAtField = json['createdAt'];
+    final createdAtField = json['createdAt'] ?? json['created_at'];
     DateTime dt = DateTime.now();
-    if (createdAtField is Timestamp) {
-      dt = createdAtField.toDate();
-    } else if (createdAtField is String) {
+    if (createdAtField is String) {
       dt = DateTime.tryParse(createdAtField) ?? DateTime.now();
     }
 
     return CommentModel(
       id: json['id'] as String? ?? '',
-      postId: json['postId'] as String? ?? '',
-      authorId: json['authorId'] as String? ?? '',
-      authorName: json['authorName'] as String? ?? 'Usuario',
-      authorAvatarUrl: json['authorAvatarUrl'] as String?,
-      content: json['content'] as String? ?? '',
+      postId: (json['postId'] ?? json['publicacion_id']) as String? ?? '',
+      authorId: (json['authorId'] ?? json['cliente_id']) as String? ?? '',
+      authorName: (json['authorName'] ?? json['author_username']) as String? ?? 'Usuario',
+      authorAvatarUrl: (json['authorAvatarUrl'] ?? json['avatar_url']) as String?,
+      content: (json['content'] ?? json['contenido']) as String? ?? '',
       createdAt: dt,
     );
   }
@@ -45,6 +41,6 @@ class CommentModel {
         'authorName': authorName,
         'authorAvatarUrl': authorAvatarUrl,
         'content': content,
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': createdAt.toIso8601String(),
       };
 }

@@ -36,10 +36,33 @@ public class UserResponse {
 
     public static UserResponse from(User u, String currentUserId) {
         boolean isFollowing = false;
-        if (currentUserId != null && u.getFollowers() != null) {
-            isFollowing = u.getFollowers().stream()
-                    .anyMatch(follower -> follower.getId().equals(currentUserId));
-        }
+        try {
+            if (currentUserId != null && u.getFollowers() != null) {
+                isFollowing = u.getFollowers().stream()
+                        .anyMatch(follower -> follower != null && currentUserId.equals(follower.getId()));
+            }
+        } catch (Exception ignored) {}
+
+        int followersCount = 0;
+        try {
+            if (u.getFollowers() != null) {
+                followersCount = u.getFollowers().size();
+            }
+        } catch (Exception ignored) {}
+
+        int followingCount = 0;
+        try {
+            if (u.getFollowing() != null) {
+                followingCount = u.getFollowing().size();
+            }
+        } catch (Exception ignored) {}
+
+        int postsCount = 0;
+        try {
+            if (u.getPosts() != null) {
+                postsCount = u.getPosts().size();
+            }
+        } catch (Exception ignored) {}
 
         return UserResponse.builder()
                 .id(u.getId())
@@ -54,9 +77,9 @@ public class UserResponse {
                 .emailVerified(u.getEmailVerified())
                 .createdAt(u.getCreatedAt())
                 .updatedAt(u.getUpdatedAt())
-                .followersCount(u.getFollowers() != null ? u.getFollowers().size() : 0)
-                .followingCount(u.getFollowing() != null ? u.getFollowing().size() : 0)
-                .postsCount(u.getPosts() != null ? u.getPosts().size() : 0)
+                .followersCount(followersCount)
+                .followingCount(followingCount)
+                .postsCount(postsCount)
                 .isFollowing(currentUserId != null ? isFollowing : null)
                 .build();
     }

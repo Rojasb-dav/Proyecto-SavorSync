@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../models/restaurant_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/cloudinary_service.dart';
@@ -22,6 +22,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final _customRestaurantController = TextEditingController();
   final _addressController = TextEditingController();
   final _contentController = TextEditingController();
+  final ApiService _apiService = ApiService();
 
   List<RestaurantModel> _registeredRestaurants = [];
   RestaurantModel? _selectedRestaurant;
@@ -53,13 +54,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   Future<void> _loadRestaurants() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('restaurants')
-          .get();
-
-      final list = snapshot.docs
-          .map((doc) => RestaurantModel.fromJson({'id': doc.id, ...doc.data()}))
-          .toList();
+      final list = await _apiService.getRestaurants();
 
       if (mounted) {
         setState(() {
@@ -123,15 +118,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       final user = context.read<AuthProvider>().user;
 
-      // 1. Subir la imagen a Cloudinary
       final imageUrl = await CloudinaryService.uploadImageXFile(_pickedXFile!) ??
           'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80';
 
       final restaurantId = _isManualRestaurant ? null : _selectedRestaurant?.id;
       final fullAddress = '${_addressController.text.trim()} ($_selectedCity)';
 
-      // 2. Crear documento de publicación en Cloud Firestore
-      await FirebaseFirestore.instance.collection('posts').add({
+      await _apiService.createPost({
         'userId': user?.id ?? '',
         'username': user?.username ?? 'foodie',
         'fullName': user?.fullName ?? 'Foodie Bogotá',
@@ -142,30 +135,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         'content': _contentController.text.trim(),
         'rating': _rating,
         'imageUrl': imageUrl,
-        'likesCount': 0,
-        'commentsCount': 0,
-        'createdAt': FieldValue.serverTimestamp(),
       });
-
-      // 3. Si el restaurante está registrado, actualizar el promedio de calificaciones y conteo de reseñas
-      if (restaurantId != null && restaurantId.isNotEmpty) {
-        try {
-          final restRef = FirebaseFirestore.instance.collection('restaurants').doc(restaurantId);
-          final restDoc = await restRef.get();
-          if (restDoc.exists) {
-            final data = restDoc.data() ?? {};
-            final currentCount = (data['reviewsCount'] as num?)?.toInt() ?? 0;
-            final currentRating = (data['ratingAverage'] as num?)?.toDouble() ?? 5.0;
-            final newCount = currentCount + 1;
-            final newRating = ((currentRating * currentCount) + _rating) / newCount;
-
-            await restRef.update({
-              'reviewsCount': newCount,
-              'ratingAverage': double.parse(newRating.toStringAsFixed(1)),
-            });
-          }
-        } catch (_) {}
-      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -214,7 +184,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Selector de Imagen
               GestureDetector(
                 onTap: _showPickerOptions,
                 child: Container(
@@ -245,7 +214,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Selector de Restaurante Registrado / Manual
               Text('Restaurante Gastronómico', style: AppTextStyles.title),
               const SizedBox(height: 8),
               if (_loadingRestaurants)
@@ -324,7 +292,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Selector de Ciudad / Zona
               Text('Ciudad / Zona', style: AppTextStyles.title),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
@@ -341,7 +308,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Dirección / Ubicación
               Text('Dirección o Punto de Referencia', style: AppTextStyles.title),
               const SizedBox(height: 8),
               TextFormField(
@@ -353,7 +319,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Calificación
               Text('Calificación de la Experiencia', style: AppTextStyles.title),
               const SizedBox(height: 8),
               Row(
@@ -377,7 +342,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Comentario / Experiencia
               Text('Comentario & Reseña', style: AppTextStyles.title),
               const SizedBox(height: 8),
               TextFormField(

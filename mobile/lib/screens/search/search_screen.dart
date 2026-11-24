@@ -1,10 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../models/restaurant_model.dart';
 import '../../widgets/smart_recommendation_modal.dart';
 import '../restaurants/restaurant_detail_screen.dart';
@@ -18,6 +18,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final ApiService _apiService = ApiService();
   List<RestaurantModel> _allRestaurants = [];
   List<RestaurantModel> _filteredRestaurants = [];
   String _selectedCategory = 'Todos';
@@ -32,33 +33,6 @@ class _SearchScreenState extends State<SearchScreen> {
     'Italiana',
   ];
 
-  final List<RestaurantModel> _seedRestaurants = const [
-    RestaurantModel(
-      id: 'res_1',
-      name: 'Andrés Carne de Res',
-      description: 'Icónico restaurante colombiano con música, parrilla y excelente ambiente.',
-      address: 'Calle 82 # 12-21, Zona T, Bogotá',
-      category: 'Parrilla',
-      latitude: 4.6669,
-      longitude: -74.0545,
-      ratingAverage: 4.8,
-      reviewsCount: 128,
-      imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
-    ),
-    RestaurantModel(
-      id: 'res_2',
-      name: 'Crepes & Waffles',
-      description: 'Famosos crepes salados, dulces y helados artesanales en Bogotá.',
-      address: 'Carrera 11 # 85-09, Bogotá',
-      category: 'Postres',
-      latitude: 4.6702,
-      longitude: -74.0583,
-      ratingAverage: 4.7,
-      reviewsCount: 215,
-      imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80',
-    ),
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -67,17 +41,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _loadRestaurants() async {
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('restaurants').get();
-      List<RestaurantModel> list = [];
-      if (snapshot.docs.isNotEmpty) {
-        list = snapshot.docs
-            .map((doc) => RestaurantModel.fromJson({'id': doc.id, ...doc.data()}))
-            .where((r) => r.status == 'activo' || r.status == 'active')
-            .toList();
-        if (list.isEmpty) list = _seedRestaurants;
-      } else {
-        list = _seedRestaurants;
-      }
+      final list = await _apiService.getRestaurants();
       if (mounted) {
         setState(() {
           _allRestaurants = list;
@@ -88,8 +52,6 @@ class _SearchScreenState extends State<SearchScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _allRestaurants = _seedRestaurants;
-          _filteredRestaurants = _seedRestaurants;
           _loading = false;
         });
       }

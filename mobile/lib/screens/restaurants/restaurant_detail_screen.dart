@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../models/menu_item_model.dart';
 import '../../models/post_model.dart';
 import '../../models/restaurant_model.dart';
@@ -26,7 +26,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
   bool _isFavorite = false;
   List<PostModel> _communityReviews = [];
   List<PostModel> _officialPosts = [];
+  List<MenuItemModel> _menuItems = [];
   bool _loadingPosts = true;
+  final ApiService _apiService = ApiService();
   late TabController _tabController;
 
   final _currencyFormat = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
@@ -35,9 +37,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _registerView();
-    _checkFavorite();
-    _loadPostsAndReviews();
+    _loadData();
   }
 
   @override
@@ -46,116 +46,28 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
     super.dispose();
   }
 
-  Future<void> _registerView() async {
+  Future<void> _loadData() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('restaurants')
-          .doc(widget.restaurant.id)
-          .update({'viewsCount': FieldValue.increment(1)});
-    } catch (_) {}
-  }
+      final posts = await _apiService.getPosts();
+      final menu = await _apiService.getMenu(widget.restaurant.id);
 
-  Future<void> _checkFavorite() async {
-    final user = context.read<AuthProvider>().user;
-    if (user == null) return;
-    try {
-      final favDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.id)
-          .collection('favorites')
-          .doc(widget.restaurant.id)
-          .get();
-      if (!mounted) return;
-      setState(() => _isFavorite = favDoc.exists);
-    } catch (_) {}
-  }
-
-  Future<void> _toggleFavorite() async {
-    final user = context.read<AuthProvider>().user;
-    if (user == null) return;
-
-    final ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.id)
-        .collection('favorites')
-        .doc(widget.restaurant.id);
-
-    final restRef = FirebaseFirestore.instance
-        .collection('restaurants')
-        .doc(widget.restaurant.id);
-
-    setState(() => _isFavorite = !_isFavorite);
-
-    try {
-      if (_isFavorite) {
-        await ref.set({
-          'restaurantId': widget.restaurant.id,
-          'name': widget.restaurant.name,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        await restRef.update({'favoritesCount': FieldValue.increment(1)});
-      } else {
-        await ref.delete();
-        await restRef.update({'favoritesCount': FieldValue.increment(-1)});
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _loadPostsAndReviews() async {
-    try {
-      final queryById = await FirebaseFirestore.instance
-          .collection('posts')
-          .where('restaurantId', isEqualTo: widget.restaurant.id)
-          .get();
-
-      final queryByName = await FirebaseFirestore.instance
-          .collection('posts')
-          .where('restaurantName', isEqualTo: widget.restaurant.name)
-          .get();
-
-      final Map<String, PostModel> map = {};
-
-      for (final doc in [...queryById.docs, ...queryByName.docs]) {
-        final data = doc.data();
-        final createdAtField = data['createdAt'];
-        DateTime dt = DateTime.now();
-        if (createdAtField is Timestamp) {
-          dt = createdAtField.toDate();
-        }
-        map[doc.id] = PostModel.fromJson({
-          'id': doc.id,
-          ...data,
-          'createdAt': dt.toIso8601String(),
-        });
-      }
-
-      final allList = map.values.toList();
-      final ownerId = widget.restaurant.ownerId;
-      final adminIds = widget.restaurant.adminIds;
-
-      // Separar Novedades Oficiales de las Reseñas de Comensales
-      final official = allList.where((p) {
-        final isOwner = ownerId.isNotEmpty && p.userId == ownerId;
-        final isAdmin = adminIds.contains(p.userId);
-        return isOwner || isAdmin;
-      }).toList();
-
-      final community = allList.where((p) {
-        final isOwner = ownerId.isNotEmpty && p.userId == ownerId;
-        final isAdmin = adminIds.contains(p.userId);
-        return !isOwner && !isAdmin;
-      }).toList();
+      final matching = posts.where((p) => p.restaurantName.toLowerCase() == widget.restaurant.name.toLowerCase() || p.restaurantId == widget.restaurant.id).toList();
 
       if (!mounted) return;
       setState(() {
-        _officialPosts = official;
-        _communityReviews = community;
+        _communityReviews = matching;
+        _officialPosts = [];
+        _menuItems = menu;
         _loadingPosts = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingPosts = false);
     }
+  }
+
+  void _toggleFavorite() {
+    setState(() => _isFavorite = !_isFavorite);
   }
 
   @override
@@ -250,7 +162,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
                   ),
                   const SizedBox(height: 16),
 
-                  // TabBar: Menú / Carta, Reseñas Comensales, Promociones del Local
                   TabBar(
                     controller: _tabController,
                     labelColor: AppColors.primary,
@@ -270,102 +181,80 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
         body: TabBarView(
           controller: _tabController,
           children: [
-            // 1. Menú / Carta del Local (Tiempo Real desde Firestore)
-            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('restaurants')
-                  .doc(r.id)
-                  .collection('menu')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                }
-
-                final docs = snapshot.data?.docs ?? [];
-                if (docs.isEmpty) {
-                  return Center(
+            _menuItems.isEmpty
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Icon(Icons.restaurant_menu_rounded, size: 54, color: AppColors.secondary),
                         const SizedBox(height: 12),
-                        Text('Menú digital en preparación', style: AppTextStyles.title.copyWith(color: textColor)),
-                        const SizedBox(height: 4),
-                        Text('El establecimiento cargará sus platillos pronto.', style: AppTextStyles.caption.copyWith(color: textColor.withValues(alpha: 0.7))),
+                        Text('Menú digital disponible', style: AppTextStyles.title.copyWith(color: textColor)),
                       ],
                     ),
-                  );
-                }
-
-                final menuItems = docs.map((d) => MenuItemModel.fromJson({'id': d.id, ...d.data()})).toList();
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: menuItems.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, i) {
-                    final item = menuItems[i];
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.divider.withValues(alpha: 0.3)),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                      ),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: CachedNetworkImage(
-                              imageUrl: (item.imageUrl != null && item.imageUrl!.isNotEmpty)
-                                  ? item.imageUrl!
-                                  : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80',
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _menuItems.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) {
+                      final item = _menuItems[i];
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.divider.withValues(alpha: 0.3)),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                        ),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: CachedNetworkImage(
+                                imageUrl: (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+                                    ? item.imageUrl!
+                                    : 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80',
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(child: Text(item.name, style: AppTextStyles.title.copyWith(fontSize: 15, color: textColor))),
-                                    if (!item.isAvailable)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6)),
-                                        child: const Text('Agotado', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
-                                      ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text(item.name, style: AppTextStyles.title.copyWith(fontSize: 15, color: textColor))),
+                                      if (!item.isAvailable)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6)),
+                                          child: const Text('Agotado', style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(item.category, style: AppTextStyles.caption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                  if (item.description.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(item.description, style: AppTextStyles.caption.copyWith(color: textColor.withValues(alpha: 0.7)), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(item.category, style: AppTextStyles.caption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold)),
-                                if (item.description.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(item.description, style: AppTextStyles.caption.copyWith(color: textColor.withValues(alpha: 0.7)), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _currencyFormat.format(item.price),
+                                    style: AppTextStyles.title.copyWith(color: AppColors.primary, fontSize: 15, fontWeight: FontWeight.bold),
+                                  ),
                                 ],
-                                const SizedBox(height: 6),
-                                Text(
-                                  _currencyFormat.format(item.price),
-                                  style: AppTextStyles.title.copyWith(color: AppColors.primary, fontSize: 15, fontWeight: FontWeight.bold),
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
 
-            // 2. Reseñas de la Comunidad (Foodies)
             _loadingPosts
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _communityReviews.isEmpty
@@ -375,11 +264,10 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
                         itemCount: _communityReviews.length,
                         itemBuilder: (context, i) => Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: PostCard(post: _communityReviews[i], onDeleted: _loadPostsAndReviews),
+                          child: PostCard(post: _communityReviews[i], onDeleted: _loadData),
                         ),
                       ),
 
-            // 3. Promociones y Publicaciones Oficiales del Local
             _loadingPosts
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _officialPosts.isEmpty
@@ -389,7 +277,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
                         itemCount: _officialPosts.length,
                         itemBuilder: (context, i) => Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: PostCard(post: _officialPosts[i], onDeleted: _loadPostsAndReviews),
+                          child: PostCard(post: _officialPosts[i], onDeleted: _loadData),
                         ),
                       ),
           ],

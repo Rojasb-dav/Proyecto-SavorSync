@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -9,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../models/restaurant_model.dart';
 import '../restaurants/restaurant_detail_screen.dart';
 
@@ -23,57 +23,7 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
   RestaurantModel? _selectedRestaurant;
   Position? _currentPosition;
   static const LatLng _bogotaCenter = LatLng(4.6533, -74.0621);
-
-  final List<RestaurantModel> _seedRestaurants = const [
-    RestaurantModel(
-      id: 'res_1',
-      name: 'Andrés Carne de Res',
-      description: 'Icónico restaurante colombiano con música, parrilla y excelente ambiente.',
-      address: 'Calle 82 # 12-21, Zona T, Bogotá',
-      category: 'Parrilla',
-      latitude: 4.6669,
-      longitude: -74.0545,
-      ratingAverage: 4.8,
-      reviewsCount: 128,
-      imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
-    ),
-    RestaurantModel(
-      id: 'res_2',
-      name: 'Crepes & Waffles',
-      description: 'Famosos crepes salados, dulces y helados artesanales en Bogotá.',
-      address: 'Carrera 11 # 85-09, Bogotá',
-      category: 'Postres',
-      latitude: 4.6702,
-      longitude: -74.0583,
-      ratingAverage: 4.7,
-      reviewsCount: 215,
-      imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80',
-    ),
-    RestaurantModel(
-      id: 'res_3',
-      name: 'Wok Zona G',
-      description: 'Gastronomía asiática sustentable y variada en el corazón gourmet de la ciudad.',
-      address: 'Carrera 5 # 69-10, Zona G, Bogotá',
-      category: 'Asiática',
-      latitude: 4.6521,
-      longitude: -74.0551,
-      ratingAverage: 4.6,
-      reviewsCount: 94,
-      imageUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=800&q=80',
-    ),
-    RestaurantModel(
-      id: 'res_4',
-      name: 'El Corral Gourmet',
-      description: 'Hamburguesas premium con ingredientes seleccionados y papas en cascos.',
-      address: 'Calle 93 # 12-11, Parque de la 93, Bogotá',
-      category: 'Hamburguesas',
-      latitude: 4.6761,
-      longitude: -74.0482,
-      ratingAverage: 4.5,
-      reviewsCount: 110,
-      imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=800&q=80',
-    ),
-  ];
+  final ApiService _apiService = ApiService();
 
   @override
   void initState() {
@@ -144,21 +94,10 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
         : _bogotaCenter;
 
     return Scaffold(
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('restaurants').snapshots(),
+      body: FutureBuilder<List<RestaurantModel>>(
+        future: _apiService.getRestaurants(),
         builder: (context, snapshot) {
-          List<RestaurantModel> restaurants = [];
-          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-            restaurants = snapshot.data!.docs
-                .map((doc) => RestaurantModel.fromJson({'id': doc.id, ...doc.data()}))
-                .where((r) {
-                  final st = r.status.toLowerCase();
-                  return st == 'activo' || st == 'active';
-                })
-                .toList();
-          } else {
-            restaurants = _seedRestaurants;
-          }
+          final restaurants = snapshot.data ?? [];
 
           final restMarkers = restaurants.map((r) {
             return Marker(
@@ -191,7 +130,6 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
             );
           }).toList();
 
-          // Marcador del usuario GPS
           Marker? userMarker;
           if (_currentPosition != null) {
             userMarker = Marker(
@@ -211,7 +149,6 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
 
           final allMarkers = [...restMarkers, if (userMarker != null) userMarker];
 
-          // Puntos de la ruta
           final List<LatLng> routePoints = _selectedRestaurant != null
               ? [userLatLng, LatLng(_selectedRestaurant!.latitude, _selectedRestaurant!.longitude)]
               : [];

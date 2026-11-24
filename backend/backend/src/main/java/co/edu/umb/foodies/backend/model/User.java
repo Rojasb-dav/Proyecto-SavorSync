@@ -17,7 +17,7 @@ import java.util.UUID;
 public class User {
 
     public enum Role {
-        foodie, restaurant_admin
+        foodie, restaurant_admin, moderador, admin_sistema
     }
 
     @Id
@@ -37,7 +37,7 @@ public class User {
     private String fullName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "rol", nullable = false, columnDefinition = "ENUM('foodie','restaurant_admin')")
+    @Column(name = "rol", nullable = false)
     private Role role;
 
     @Column(name = "avatar_url", length = 500)

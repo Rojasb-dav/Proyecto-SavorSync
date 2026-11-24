@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class ReservationModel {
   final String id;
   final String restaurantId;
@@ -28,25 +26,23 @@ class ReservationModel {
   });
 
   factory ReservationModel.fromJson(Map<String, dynamic> json) {
-    final createdAtField = json['createdAt'];
+    final createdAtField = json['createdAt'] ?? json['created_at'];
     DateTime dt = DateTime.now();
-    if (createdAtField is Timestamp) {
-      dt = createdAtField.toDate();
-    } else if (createdAtField is String) {
+    if (createdAtField is String) {
       dt = DateTime.tryParse(createdAtField) ?? DateTime.now();
     }
 
     return ReservationModel(
       id: json['id'] as String? ?? '',
-      restaurantId: json['restaurantId'] as String? ?? '',
-      restaurantName: json['restaurantName'] as String? ?? 'Restaurante',
-      clienteId: json['clienteId'] as String? ?? '',
-      clienteNombre: json['clienteNombre'] as String? ?? 'Comensal',
-      numPersonas: (json['numPersonas'] as num?)?.toInt() ?? 2,
-      fechaReserva: json['fechaReserva'] as String? ?? '',
-      horaReserva: json['horaReserva'] as String? ?? '',
+      restaurantId: (json['restaurantId'] ?? json['restaurante_id']) as String? ?? '',
+      restaurantName: (json['restaurantName'] ?? json['restaurante_nombre']) as String? ?? 'Restaurante',
+      clienteId: (json['clienteId'] ?? json['cliente_id']) as String? ?? '',
+      clienteNombre: (json['clienteNombre'] ?? json['cliente_nombre']) as String? ?? 'Comensal',
+      numPersonas: ((json['numPersonas'] ?? json['num_personas']) as num?)?.toInt() ?? 2,
+      fechaReserva: (json['fechaReserva'] ?? json['fecha_reserva']) as String? ?? '',
+      horaReserva: (json['horaReserva'] ?? json['hora_reserva']) as String? ?? '',
       notas: json['notas'] as String? ?? '',
-      estado: json['estado'] as String? ?? 'pendiente',
+      estado: (json['estado'] ?? json['status']) as String? ?? 'pendiente',
       createdAt: dt,
     );
   }
@@ -61,6 +57,6 @@ class ReservationModel {
         'horaReserva': horaReserva,
         'notas': notas,
         'estado': estado,
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': createdAt.toIso8601String(),
       };
 }

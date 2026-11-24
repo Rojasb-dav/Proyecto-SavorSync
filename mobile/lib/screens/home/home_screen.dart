@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +5,7 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../core/services/notification_service.dart';
 import '../../models/notification_model.dart';
 import '../../models/post_model.dart';
@@ -30,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<CurvedNavigationBarState> _navKey = GlobalKey();
   final List<PostModel> _posts = [];
   bool _loading = true;
+  final ApiService _apiService = ApiService();
 
   @override
   void initState() {
@@ -40,25 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadPosts() async {
     setState(() => _loading = true);
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('posts')
-          .orderBy('createdAt', descending: true)
-          .get();
-
-      final posts = snapshot.docs.map((doc) {
-        final data = doc.data();
-        final createdAtField = data['createdAt'];
-        DateTime dt = DateTime.now();
-        if (createdAtField is Timestamp) {
-          dt = createdAtField.toDate();
-        }
-        return PostModel.fromJson({
-          'id': doc.id,
-          ...data,
-          'createdAt': dt.toIso8601String(),
-        });
-      }).toList();
-
+      final posts = await _apiService.getPosts();
       if (!mounted) return;
       setState(() {
         _posts

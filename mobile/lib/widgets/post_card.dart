@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -8,7 +7,7 @@ import 'package:shimmer/shimmer.dart';
 
 import '../core/constants/colors.dart';
 import '../core/constants/text_styles.dart';
-import '../core/services/notification_service.dart';
+import '../core/services/api_service.dart';
 import '../models/post_model.dart';
 import '../providers/auth_provider.dart';
 import '../screens/profile/profile_screen.dart';
@@ -27,54 +26,14 @@ class _PostCardState extends State<PostCard> {
   late PostModel _post = widget.post;
   bool _expanded = false;
   bool _likeBurst = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkLikeAndSaveStatus();
-  }
+  final ApiService _apiService = ApiService();
 
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.post.id != widget.post.id) {
       _post = widget.post;
-      _checkLikeAndSaveStatus();
     }
-  }
-
-  Future<void> _checkLikeAndSaveStatus() async {
-    final user = context.read<AuthProvider>().user;
-    if (user == null) return;
-
-    try {
-      final likeDocFuture = FirebaseFirestore.instance
-          .collection('posts')
-          .doc(_post.id)
-          .collection('likes')
-          .doc(user.id)
-          .get();
-
-      final savedDocFuture = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.id)
-          .collection('saved_posts')
-          .doc(_post.id)
-          .get();
-
-      final results = await Future.wait([likeDocFuture, savedDocFuture]);
-      final isLiked = results[0].exists;
-      final isSaved = results[1].exists;
-
-      if (mounted) {
-        setState(() {
-          _post = _post.copyWith(
-            likedByMe: isLiked,
-            savedByMe: isSaved,
-          );
-        });
-      }
-    } catch (_) {}
   }
 
   Future<void> _toggleLike() async {
@@ -104,65 +63,17 @@ class _PostCardState extends State<PostCard> {
     }
 
     try {
-      final postRef = FirebaseFirestore.instance.collection('posts').doc(_post.id);
-      final likeDoc = postRef.collection('likes').doc(user.id);
-
-      if (newLiked) {
-        await likeDoc.set({
-          'userId': user.id,
-          'username': user.username,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        await postRef.update({'likesCount': FieldValue.increment(1)});
-
-        // Notificación solo al autor original si no es el mismo usuario
-        if (_post.userId.isNotEmpty && _post.userId != user.id) {
-          final cleanUsername = user.username.replaceAll('@', '');
-          NotificationService.sendNotification(
-            targetUserId: _post.userId,
-            title: '¡Nuevo Me Gusta! 💖',
-            body: 'A @$cleanUsername le gustó tu reseña de ${_post.restaurantName}',
-            type: 'like',
-            targetId: _post.id,
-          );
-        }
-      } else {
-        await likeDoc.delete();
-        await postRef.update({'likesCount': FieldValue.increment(-1)});
-      }
+      await _apiService.toggleLikePost(_post.id);
     } catch (e) {
       debugPrint('Error al guardar me gusta: $e');
     }
   }
 
   Future<void> _toggleSave() async {
-    final user = context.read<AuthProvider>().user;
-    if (user == null) return;
-
     final newSaved = !_post.savedByMe;
-
     setState(() {
       _post = _post.copyWith(savedByMe: newSaved);
     });
-
-    try {
-      final savedDoc = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.id)
-          .collection('saved_posts')
-          .doc(_post.id);
-
-      if (newSaved) {
-        await savedDoc.set({
-          'postId': _post.id,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await savedDoc.delete();
-      }
-    } catch (e) {
-      debugPrint('Error al guardar publicación: $e');
-    }
   }
 
   void _openComments() {
@@ -174,80 +85,6 @@ class _PostCardState extends State<PostCard> {
     );
   }
 
-  void _showLikesListModal() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        height: 400,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.favorite_rounded, color: AppColors.primary, size: 24),
-                const SizedBox(width: 8),
-                Text('Personas a las que les gusta (${_post.likesCount})', style: AppTextStyles.title),
-                const Spacer(),
-                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
-              ],
-            ),
-            const Divider(height: 16),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('posts')
-                    .doc(_post.id)
-                    .collection('likes')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                  }
-                  final docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) {
-                    return const Center(child: Text('Aún no hay me gusta'));
-                  }
-
-                  return ListView.separated(
-                    itemCount: docs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) {
-                      final userId = docs[i].data()['userId'] as String? ?? docs[i].id;
-                      return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                        future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
-                        builder: (context, uSnap) {
-                          final uData = uSnap.data?.data() ?? {};
-                          final uName = (uData['username'] as String? ?? 'foodie').replaceAll('@', '');
-                          final fName = uData['fullName'] as String? ?? uName;
-                          final avatar = uData['avatarUrl'] as String?;
-
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundImage: avatar != null ? NetworkImage(avatar) : null,
-                              child: avatar == null ? Text(uName.isNotEmpty ? uName[0].toUpperCase() : '?') : null,
-                            ),
-                            title: Text(fName, style: AppTextStyles.title.copyWith(fontSize: 14)),
-                            subtitle: Text('@$uName', style: AppTextStyles.caption),
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userId: userId)));
-                            },
-                          );
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   String _buildInstagramLikesText() {
     if (_post.likesCount == 0) return 'Sé el primero en dar me gusta';
     if (_post.likedByMe) {
@@ -256,80 +93,6 @@ class _PostCardState extends State<PostCard> {
     } else {
       if (_post.likesCount == 1) return 'Le gusta a 1 persona';
       return 'Le gusta a ${_post.likesCount} personas';
-    }
-  }
-
-  Future<void> _showReportDialog() async {
-    final user = context.read<AuthProvider>().user;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Inicia sesión para enviar un reporte')),
-      );
-      return;
-    }
-
-    String selectedReason = 'Spam o información engañosa';
-    final reasons = [
-      'Spam o información engañosa',
-      'Lenguaje ofensivo o inapropiado',
-      'Fotografía falsa o inadecuada',
-      'Infracción de normas comunitarias',
-    ];
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlgState) => AlertDialog(
-          title: const Text('Reportar Publicación'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Selecciona el motivo de tu reporte:'),
-              const SizedBox(height: 12),
-              ...reasons.map((r) => RadioListTile<String>(
-                    title: Text(r, style: const TextStyle(fontSize: 13)),
-                    value: r,
-                    groupValue: selectedReason,
-                    onChanged: (v) => setDlgState(() => selectedReason = v!),
-                  )),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Enviar Reporte', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await FirebaseFirestore.instance.collection('reports').add({
-          'postId': _post.id,
-          'postContent': _post.content,
-          'postImageUrl': _post.imageUrl,
-          'restaurantName': _post.restaurantName,
-          'reporterId': user.id,
-          'reason': selectedReason,
-          'status': 'pending',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Reporte enviado a los moderadores. ¡Gracias por cuidar la comunidad!'), backgroundColor: Colors.green),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar reporte: $e')),
-        );
-      }
     }
   }
 
@@ -386,7 +149,7 @@ class _PostCardState extends State<PostCard> {
             ),
             title: GestureDetector(
               onTap: _navigateToProfile,
-              child: Text(_post.fullName, style: AppTextStyles.username),
+              child: Text(_post.fullName.isNotEmpty ? _post.fullName : cleanUsername, style: AppTextStyles.username),
             ),
             subtitle: GestureDetector(
               onTap: _navigateToProfile,
@@ -396,37 +159,10 @@ class _PostCardState extends State<PostCard> {
               icon: const Icon(Icons.more_horiz_rounded),
               onSelected: (val) async {
                 if (val == 'delete') {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Eliminar publicación'),
-                      content: const Text('¿Estás seguro de que quieres eliminar esta reseña?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Cancelar'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (confirm == true) {
-                    try {
-                      await FirebaseFirestore.instance.collection('posts').doc(_post.id).delete();
-                      widget.onDeleted?.call();
-                    } catch (e) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Error al eliminar')),
-                      );
-                    }
-                  }
-                } else if (val == 'report') {
-                  _showReportDialog();
+                  try {
+                    await _apiService.deletePost(_post.id);
+                    widget.onDeleted?.call();
+                  } catch (_) {}
                 }
               },
               itemBuilder: (ctx) => [
@@ -438,17 +174,6 @@ class _PostCardState extends State<PostCard> {
                         Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
                         SizedBox(width: 8),
                         Text('Eliminar', style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                if (!isMe)
-                  const PopupMenuItem(
-                    value: 'report',
-                    child: Row(
-                      children: [
-                        Icon(Icons.flag_outlined, color: AppColors.error, size: 20),
-                        SizedBox(width: 8),
-                        Text('Reportar reseña'),
                       ],
                     ),
                   ),
@@ -578,14 +303,11 @@ class _PostCardState extends State<PostCard> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: _showLikesListModal,
-                  child: Text(
-                    _buildInstagramLikesText(),
-                    style: AppTextStyles.caption.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
+                Text(
+                  _buildInstagramLikesText(),
+                  style: AppTextStyles.caption.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 6),

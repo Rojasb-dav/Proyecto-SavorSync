@@ -21,20 +21,20 @@ class NotificationModel {
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
     DateTime dt = DateTime.now();
-    final rawCreated = json['createdAt'];
+    final rawCreated = json['createdAt'] ?? json['created_at'];
     if (rawCreated is String) {
       dt = DateTime.tryParse(rawCreated) ?? DateTime.now();
     }
 
     return NotificationModel(
       id: json['id'] as String? ?? '',
-      userId: json['userId'] as String? ?? '',
-      title: json['title'] as String? ?? 'Notificación SavorSync',
-      body: json['body'] as String? ?? '',
-      type: json['type'] as String? ?? 'system',
-      read: json['read'] as bool? ?? false,
+      userId: (json['userId'] ?? json['cliente_id']) as String? ?? '',
+      title: (json['title'] ?? json['titulo']) as String? ?? 'Notificación SavorSync',
+      body: (json['body'] ?? json['mensaje']) as String? ?? '',
+      type: (json['type'] ?? json['tipo']) as String? ?? 'system',
+      read: (json['read'] ?? json['leida']) as bool? ?? false,
       createdAt: dt,
-      targetId: json['targetId'] as String?,
+      targetId: (json['targetId'] ?? json['target_id']) as String?,
     );
   }
 

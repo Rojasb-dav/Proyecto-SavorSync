@@ -8,15 +8,22 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
+
+    @GetMapping
+    public ResponseEntity<List<UserResponse>> getAllUsers(@AuthenticationPrincipal String authUserId) {
+        return ResponseEntity.ok(userService.getAllUsers(authUserId));
+    }
 
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getById(@PathVariable String id, @AuthenticationPrincipal String authUserId) {
@@ -40,5 +47,16 @@ public class UserController {
                                                      @RequestBody Map<String, String> body,
                                                      @AuthenticationPrincipal String authUserId) {
         return ResponseEntity.ok(userService.updateAvatar(authUserId, id, body.get("avatarUrl")));
+    }
+
+    @PutMapping("/{id}/status")
+    public ResponseEntity<UserResponse> toggleUserStatus(@PathVariable String id) {
+        return ResponseEntity.ok(userService.toggleUserStatus(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable String id) {
+        userService.deleteUser(id);
+        return ResponseEntity.ok().build();
     }
 }

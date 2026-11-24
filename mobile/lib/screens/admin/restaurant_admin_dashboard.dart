@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../models/restaurant_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/cloudinary_service.dart';
@@ -30,6 +30,7 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
   final _descCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _hoursCtrl = TextEditingController(text: 'Lunes a Sábado 12:00 PM - 10:00 PM');
+  final ApiService _apiService = ApiService();
 
   RestaurantModel? _restaurant;
   XFile? _pickedImage;
@@ -49,39 +50,12 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
   }
 
   Future<void> _loadRestaurant() async {
-    final user = context.read<AuthProvider>().user;
-    if (user == null) return;
-
     try {
-      if (user.restaurantId != null && user.restaurantId!.isNotEmpty) {
-        final doc = await FirebaseFirestore.instance.collection('restaurants').doc(user.restaurantId).get();
-        if (doc.exists) {
-          final res = RestaurantModel.fromJson({'id': doc.id, ...doc.data()!});
-          _setRestaurantData(res);
-          return;
-        }
-      }
-
-      var query = await FirebaseFirestore.instance
-          .collection('restaurants')
-          .where('ownerId', isEqualTo: user.id)
-          .limit(1)
-          .get();
-
-      if (query.docs.isEmpty) {
-        query = await FirebaseFirestore.instance
-            .collection('restaurants')
-            .where('adminIds', arrayContains: user.id)
-            .limit(1)
-            .get();
-      }
-
-      if (query.docs.isNotEmpty) {
-        final doc = query.docs.first;
-        final res = RestaurantModel.fromJson({'id': doc.id, ...doc.data()});
-        _setRestaurantData(res);
+      final list = await _apiService.getRestaurants();
+      if (list.isNotEmpty) {
+        _setRestaurantData(list.first);
       } else {
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -204,146 +178,10 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
     }
   }
 
-  Future<void> _showInviteCoAdminDialog() async {
-    if (_restaurant == null) return;
-    final emailCtrl = TextEditingController();
-    bool loading = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              const Icon(Icons.group_add_rounded, color: AppColors.primary, size: 26),
-              const SizedBox(width: 10),
-              Text('Vincular Co-Administrador', style: AppTextStyles.title),
-            ],
-          ),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Ingresa el correo del usuario para vincularlo como co-administrador de este establecimiento:',
-                  style: AppTextStyles.caption,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Correo electrónico del usuario',
-                    prefixIcon: Icon(Icons.mail_outline_rounded),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Text(
-                    '🛡️ Regla de Seguridad 1:N: Un restaurante puede tener múltiples administradores, pero un usuario sólo puede pertenecer a 1 restaurante.',
-                    style: TextStyle(color: Colors.orange.shade900, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-              onPressed: loading
-                  ? null
-                  : () async {
-                      final email = emailCtrl.text.trim();
-                      if (email.isEmpty) return;
-                      setDlgState(() => loading = true);
-
-                      try {
-                        final userSnap = await FirebaseFirestore.instance
-                            .collection('users')
-                            .where('email', isEqualTo: email)
-                            .limit(1)
-                            .get();
-
-                        if (userSnap.docs.isEmpty) {
-                          setDlgState(() => loading = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('No existe un usuario con ese correo registrado')),
-                          );
-                          return;
-                        }
-
-                        final targetUserDoc = userSnap.docs.first;
-                        final targetUserData = targetUserDoc.data();
-                        final targetUserId = targetUserDoc.id;
-                        final existingResId = targetUserData['restaurantId'] as String?;
-
-                        if (existingResId != null && existingResId.isNotEmpty && existingResId != _restaurant!.id) {
-                          setDlgState(() => loading = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('⚠️ Seguridad: Este usuario ya administra otro restaurante.'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                          return;
-                        }
-
-                        await FirebaseFirestore.instance.collection('restaurants').doc(_restaurant!.id).update({
-                          'adminIds': FieldValue.arrayUnion([targetUserId]),
-                        });
-
-                        await FirebaseFirestore.instance.collection('users').doc(targetUserId).update({
-                          'role': 'restaurant_admin',
-                          'restaurantId': _restaurant!.id,
-                        });
-
-                        if (!ctx.mounted) return;
-                        Navigator.pop(ctx);
-                        _loadRestaurant();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Co-administrador $email vinculado exitosamente'), backgroundColor: Colors.green),
-                        );
-                      } catch (e) {
-                        setDlgState(() => loading = false);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error al vincular: $e')),
-                        );
-                      }
-                    },
-              child: loading
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Vincular Admin', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _saveRestaurant() async {
     if (!_formKey.currentState!.validate()) return;
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
-
-    // Verificar si el usuario ya administra OTRO restaurante
-    if (user.restaurantId != null && user.restaurantId!.isNotEmpty && _restaurant != null && user.restaurantId != _restaurant!.id) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ Regla de Seguridad 1:N: Ya administras otro establecimiento. No puedes crear un segundo restaurante.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
 
     setState(() => _saving = true);
     try {
@@ -359,42 +197,18 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
         await _geocodeAddressIfNeeded(_addressCtrl.text.trim());
       }
 
-      final statusToSave = _restaurant?.status ?? 'pendiente';
-      final List<String> currentAdminIds = _restaurant?.adminIds ?? [];
-      if (!currentAdminIds.contains(user.id)) {
-        currentAdminIds.add(user.id);
-      }
-
       final data = {
-        'ownerId': _restaurant?.ownerId.isNotEmpty == true ? _restaurant!.ownerId : user.id,
-        'adminIds': currentAdminIds,
         'name': _nameCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
         'category': _categoryCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
-        'openingHours': _hoursCtrl.text.trim(),
         'imageUrl': finalImageUrl ?? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80',
         'latitude': _latitude ?? 4.6669,
         'longitude': _longitude ?? -74.0545,
-        'status': statusToSave,
-        'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      if (_restaurant != null) {
-        await FirebaseFirestore.instance
-            .collection('restaurants')
-            .doc(_restaurant!.id)
-            .update(data);
-        _restaurant = RestaurantModel.fromJson({'id': _restaurant!.id, ...data});
-      } else {
-        final docRef = await FirebaseFirestore.instance.collection('restaurants').add(data);
-        _restaurant = RestaurantModel.fromJson({'id': docRef.id, ...data});
-
-        await FirebaseFirestore.instance.collection('users').doc(user.id).update({
-          'restaurantId': docRef.id,
-        });
-      }
+      await _apiService.createRestaurant(data);
 
       if (!mounted) return;
       setState(() {
@@ -402,7 +216,7 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
         _saving = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Información del local actualizada con éxito en la plataforma'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('Información del local actualizada con éxito'), backgroundColor: Colors.green),
       );
     } catch (e) {
       if (!mounted) return;
@@ -426,11 +240,6 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
       appBar: AppBar(
         title: const Text('Configuración del Establecimiento'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.group_add_rounded, color: AppColors.primary),
-            tooltip: 'Vincular Co-Administrador (1:N)',
-            onPressed: _showInviteCoAdminDialog,
-          ),
           IconButton(
             icon: const Icon(Icons.analytics_rounded, color: AppColors.primary),
             tooltip: 'Analítica BI',
@@ -461,7 +270,6 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Banner de estado de aprobación
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -515,7 +323,6 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Foto de Portada con Cloudinary
                   Text('Foto de Portada HD (Cloudinary)', style: AppTextStyles.title),
                   const SizedBox(height: 8),
                   GestureDetector(
@@ -542,33 +349,11 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
                                 Text('Haz clic para cambiar o subir imagen de portada', style: AppTextStyles.caption),
                               ],
                             )
-                          : Stack(
-                              children: [
-                                Positioned(
-                                  right: 12,
-                                  bottom: 12,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.7),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: const Row(
-                                      children: [
-                                        Icon(Icons.edit_rounded, color: Colors.white, size: 16),
-                                        SizedBox(width: 6),
-                                        Text('Cambiar Imagen', style: TextStyle(color: Colors.white, fontSize: 12)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 24),
 
-                  // Formulario en Grilla/Filas
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final isWide = constraints.maxWidth > 700;
@@ -660,7 +445,6 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
                           ],
                           const SizedBox(height: 16),
 
-                          // Mapa Interactivo para ajustar la posición exacta arrastrando el pin
                           Text('Ubicación Exacta en el Mapa (Toca el mapa para mover el pin 📍)', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           ClipRRect(
@@ -705,29 +489,33 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
                           _buildFormField('Horarios de Atención', _hoursCtrl, 'Ej. Lunes a Sábado 12:00 PM - 10:00 PM'),
                           const SizedBox(height: 16),
 
-                          _buildFormField('Descripción y Concepto Culinario', _descCtrl, 'Describe la experiencia para los comensales...', maxLines: 3),
+                          Text('Descripción / Propuesta Gastronómica', style: AppTextStyles.title),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _descCtrl,
+                            maxLines: 4,
+                            decoration: const InputDecoration(hintText: 'Describe el ambiente, los platos estrella y la experiencia culinaria...'),
+                          ),
+                          const SizedBox(height: 28),
+
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                minimumSize: const Size.fromHeight(52),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
+                              onPressed: _saving ? null : _saveRestaurant,
+                              icon: _saving
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.save_rounded, color: Colors.white),
+                              label: const Text('Guardar Información del Local', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                            ),
+                          ),
                         ],
                       );
                     },
-                  ),
-                  const SizedBox(height: 28),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _saving ? null : _saveRestaurant,
-                          icon: _saving
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.save_rounded),
-                          label: const Text('Guardar Información del Local'),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -738,32 +526,17 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
     );
   }
 
-  Widget _buildFormField(
-    String label,
-    TextEditingController controller,
-    String hint, {
-    int maxLines = 1,
-    TextInputType keyboardType = TextInputType.text,
-  }) {
+  Widget _buildFormField(String label, TextEditingController controller, String hint, {TextInputType keyboardType = TextInputType.text}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 6),
+        Text(label, style: AppTextStyles.title),
+        const SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          maxLines: maxLines,
           keyboardType: keyboardType,
-          decoration: InputDecoration(
-            hintText: hint,
-            alignLabelWithHint: maxLines > 1,
-          ),
-          validator: (v) {
-            if (label.contains('*') && (v == null || v.trim().isEmpty)) {
-              return 'Campo requerido';
-            }
-            return null;
-          },
+          decoration: InputDecoration(hintText: hint),
+          validator: (v) => label.contains('*') && (v == null || v.trim().isEmpty) ? 'Campo requerido' : null,
         ),
       ],
     );

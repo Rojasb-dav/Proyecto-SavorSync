@@ -20,6 +20,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  String _selectedRole = 'foodie';
   bool _obscure = true;
 
   @override
@@ -39,7 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       username: _usernameCtrl.text.trim(),
       password: _passwordCtrl.text,
       fullName: _fullNameCtrl.text.trim(),
-      role: 'foodie',
+      role: _selectedRole,
     );
     if (!mounted) return;
     if (ok) {
@@ -84,6 +85,64 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   style: AppTextStyles.subtle,
                 ).animate(delay: 80.ms).fadeIn(duration: 400.ms),
                 const SizedBox(height: 24),
+
+                // Selector de Rol de Usuario
+                Text('Tipo de Perfil / Rol *', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 8),
+                _animated(
+                  delay: 100,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.divider),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedRole,
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'foodie',
+                            child: Row(
+                              children: [
+                                Icon(Icons.restaurant_rounded, color: AppColors.primary, size: 20),
+                                SizedBox(width: 10),
+                                Text('Foodie / Comensal 🥑'),
+                              ],
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'restaurant_admin',
+                            child: Row(
+                              children: [
+                                Icon(Icons.storefront_rounded, color: Colors.orange, size: 20),
+                                SizedBox(width: 10),
+                                Text('Administrador de Restaurante 🏪'),
+                              ],
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'moderador',
+                            child: Row(
+                              children: [
+                                Icon(Icons.shield_rounded, color: Colors.blue, size: 20),
+                                SizedBox(width: 10),
+                                Text('Moderador / Atención de PQRS 🛡️'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedRole = val);
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 _animated(
                   delay: 140,
                   child: TextFormField(

@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/posts")
+@RequestMapping("/api/v1/posts")
 @RequiredArgsConstructor
 public class PostController {
 
@@ -45,7 +45,10 @@ public class PostController {
     }
 
     private String getUserIdFromRequest(HttpServletRequest request) {
-        String token = request.getHeader("Authorization").substring(7);
-        return jwtUtil.getUserId(token);
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return jwtUtil.getUserId(header.substring(7));
+        }
+        return null;
     }
 }

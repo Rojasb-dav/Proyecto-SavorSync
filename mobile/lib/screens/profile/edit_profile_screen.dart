@@ -1,10 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/cloudinary_service.dart';
 
@@ -17,6 +17,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
+  final ApiService _apiService = ApiService();
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _usernameController;
@@ -39,19 +40,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _usernameController = TextEditingController(text: user?.username);
     _phoneController = TextEditingController(text: user?.phone);
     _avatarUrl = user?.avatarUrl;
-    _loadUserBanner(user?.id);
-  }
-
-  Future<void> _loadUserBanner(String? userId) async {
-    if (userId == null) return;
-    try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
-      if (doc.exists && mounted) {
-        setState(() {
-          _bannerUrl = doc.data()?['bannerUrl'] as String?;
-        });
-      }
-    } catch (_) {}
   }
 
   Future<void> _pickAvatar() async {
@@ -97,10 +85,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'bannerUrl': finalBannerUrl,
       };
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.id)
-          .update(updateData);
+      try {
+        await _apiService.dio.put('/api/users/${user.id}', data: updateData);
+      } catch (_) {}
 
       if (!mounted) return;
       context.read<AuthProvider>().updateUser({
@@ -155,7 +142,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Selector de Banner de Portada
               Text('Foto de Portada / Banner (Cloudinary)', style: AppTextStyles.title),
               const SizedBox(height: 8),
               GestureDetector(
@@ -187,7 +173,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Selector de Avatar
               Center(
                 child: GestureDetector(
                   onTap: _pickAvatar,

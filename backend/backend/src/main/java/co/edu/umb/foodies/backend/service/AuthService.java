@@ -40,27 +40,32 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest req, HttpServletRequest httpReq) {
-        if (userRepository.existsByEmail(req.getEmail())) {
+        if (userRepository.existsByEmail(req.getEmail().trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El correo ya está registrado");
         }
-        if (userRepository.existsByUsername(req.getUsername())) {
+        if (userRepository.existsByUsername(req.getUsername().trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
         }
 
         User.Role role = User.Role.foodie;
         if (req.getRole() != null && !req.getRole().isBlank()) {
             try {
-                role = User.Role.valueOf(req.getRole());
+                role = User.Role.valueOf(req.getRole().trim().toLowerCase());
             } catch (IllegalArgumentException ex) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rol inválido");
+                role = User.Role.foodie;
             }
         }
 
+        String platformHeader = httpReq != null ? httpReq.getHeader("X-Platform") : null;
+        if ("mobile".equalsIgnoreCase(platformHeader) && (role == User.Role.restaurant_admin || role == User.Role.moderador || role == User.Role.admin_sistema)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: Los perfiles de Administrador y Moderador sólo pueden ingresar desde la plataforma Web en computador.");
+        }
+
         User user = User.builder()
-                .email(req.getEmail())
-                .username(req.getUsername())
-                .password(passwordEncoder.encode(req.getPassword()))
-                .fullName(req.getFullName())
+                .email(req.getEmail().trim())
+                .username(req.getUsername().trim())
+                .password(passwordEncoder.encode(req.getPassword().trim()))
+                .fullName(req.getFullName() != null ? req.getFullName().trim() : req.getUsername().trim())
                 .role(role)
                 .isActive(true)
                 .emailVerified(false)
@@ -73,15 +78,20 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest req, HttpServletRequest httpReq) {
-        User user = userRepository.findByEmail(req.getEmail())
+        User user = userRepository.findByEmail(req.getEmail().trim())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas"));
 
         if (!Boolean.TRUE.equals(user.getIsActive())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva");
         }
 
-        if (!passwordEncoder.matches(req.getPassword(), user.getPassword())) {
+        if (!passwordEncoder.matches(req.getPassword().trim(), user.getPassword())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
+        }
+
+        String platformHeader = httpReq != null ? httpReq.getHeader("X-Platform") : null;
+        if ("mobile".equalsIgnoreCase(platformHeader) && (user.getRole() == User.Role.restaurant_admin || user.getRole() == User.Role.moderador || user.getRole() == User.Role.admin_sistema)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: Los perfiles de Administrador y Moderador sólo tienen acceso permitido desde la plataforma Web en computador.");
         }
 
         return buildAuthResponse(user, httpReq);
@@ -105,7 +115,7 @@ public class AuthService {
             passwordResetTokenRepository.save(PasswordResetToken.builder()
                     .email(email)
                     .code(code)
-                    .expiresAt(LocalDateTime.now().plusHours(24)) // Ampliado a 24 horas por problemas de timezone
+                    .expiresAt(LocalDateTime.now().plusHours(24))
                     .build());
 
             SimpleMailMessage message = new SimpleMailMessage();
@@ -125,20 +135,11 @@ public class AuthService {
     public void resetPassword(String email, String code, String newPassword) {
         String cleanEmail = email.trim().toLowerCase();
         String cleanCode = code.trim();
-        
-        System.out.println("DEBUG: Iniciando reset para " + cleanEmail + " con código [" + cleanCode + "]");
-        
-        // Buscamos todos los tokens para este email para ver qué hay en la base de datos
-        PasswordResetToken token = passwordResetTokenRepository.findByEmailAndCode(cleanEmail, cleanCode)
-                .orElseThrow(() -> {
-                    System.out.println("DEBUG: No se encontró el token en la BD para el email y código proporcionados");
-                    return new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorrecto");
-                });
 
-        System.out.println("DEBUG: Token encontrado. Expira en: " + token.getExpiresAt());
+        PasswordResetToken token = passwordResetTokenRepository.findByEmailAndCode(cleanEmail, cleanCode)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código incorrecto"));
 
         if (token.getExpiresAt().isBefore(LocalDateTime.now())) {
-            System.out.println("DEBUG: El token ha expirado. Hora actual: " + LocalDateTime.now());
             passwordResetTokenRepository.delete(token);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El código ha expirado");
         }
@@ -149,23 +150,30 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
         
-        // Limpiamos los tokens usados
         passwordResetTokenRepository.deleteByEmail(cleanEmail);
-        System.out.println("DEBUG: Contraseña actualizada con éxito para " + cleanEmail);
     }
 
     private AuthResponse buildAuthResponse(User user, HttpServletRequest httpReq) {
         String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
 
-        AuthSession session = AuthSession.builder()
-                .userId(user.getId())
-                .sessionToken(token)
-                .platform(AuthSession.Platform.mobile)
-                .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : null)
-                .expiresAt(LocalDateTime.now().plusNanos(jwtUtil.getExpirationMs() * 1_000_000L))
-                .isActive(true)
-                .build();
-        authSessionRepository.save(session);
+        try {
+            String truncatedSessionToken = token;
+            if (truncatedSessionToken.length() > 190) {
+                truncatedSessionToken = truncatedSessionToken.substring(0, 190);
+            }
+
+            AuthSession session = AuthSession.builder()
+                    .userId(user.getId())
+                    .sessionToken(truncatedSessionToken)
+                    .platform(AuthSession.Platform.mobile)
+                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : null)
+                    .expiresAt(LocalDateTime.now().plusNanos(jwtUtil.getExpirationMs() * 1_000_000L))
+                    .isActive(true)
+                    .build();
+            authSessionRepository.save(session);
+        } catch (Exception e) {
+            System.err.println("WARN: Registro de sesión opcional omitido: " + e.getMessage());
+        }
 
         return AuthResponse.builder()
                 .token(token)

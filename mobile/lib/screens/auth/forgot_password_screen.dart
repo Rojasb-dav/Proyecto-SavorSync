@@ -1,8 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/auth_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -13,6 +13,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
+  final AuthService _authService = AuthService();
   bool _loading = false;
   bool _sent = false;
 
@@ -27,28 +28,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     setState(() => _loading = true);
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await _authService.forgotPassword(email);
       if (!mounted) return;
       setState(() {
         _loading = false;
         _sent = true;
       });
-    } on FirebaseAuthException catch (e) {
+    } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: AppColors.error,
-          content: Text(e.message ?? 'Error al solicitar el enlace de recuperación.'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: AppColors.error,
-          content: Text('Error inesperado al enviar el correo.'),
+          content: Text(e.toString().replaceAll('Exception: ', '')),
         ),
       );
     }
@@ -67,7 +59,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               Text('¿Olvidaste tu contraseña?', style: AppTextStyles.headline),
               const SizedBox(height: 12),
               Text(
-                'Ingresa tu correo electrónico y te enviaremos un enlace oficial de Firebase para restablecer tu contraseña.',
+                'Ingresa tu correo electrónico y te enviaremos las instrucciones de recuperación.',
                 style: AppTextStyles.subtle,
               ),
               const SizedBox(height: 32),
@@ -81,7 +73,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: _loading ? _sendResetEmail : _sendResetEmail,
+                onPressed: _loading ? null : _sendResetEmail,
                 child: _loading
                     ? const SizedBox(
                         width: 20,
@@ -99,7 +91,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   textAlign: TextAlign.center, style: AppTextStyles.headline),
               const SizedBox(height: 12),
               Text(
-                'Hemos enviado un correo a ${_emailController.text} con el enlace de recuperación. Revisa tu bandeja de entrada o spam.',
+                'Hemos enviado las instrucciones a ${_emailController.text}. Revisa tu bandeja de entrada.',
                 textAlign: TextAlign.center,
                 style: AppTextStyles.subtle,
               ),

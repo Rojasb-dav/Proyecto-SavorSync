@@ -1,10 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../models/menu_item_model.dart';
 import '../../models/restaurant_model.dart';
 import '../../providers/auth_provider.dart';
@@ -19,8 +19,10 @@ class MenuManagementScreen extends StatefulWidget {
 
 class _MenuManagementScreenState extends State<MenuManagementScreen> {
   RestaurantModel? _restaurant;
+  List<MenuItemModel> _menuItems = [];
   bool _loading = true;
   String _selectedCategory = 'Todas';
+  final ApiService _apiService = ApiService();
 
   static const List<String> _categories = [
     'Todas',
@@ -33,28 +35,27 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRestaurant();
+    _loadData();
   }
 
-  Future<void> _loadRestaurant() async {
+  Future<void> _loadData() async {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
 
     try {
-      final query = await FirebaseFirestore.instance
-          .collection('restaurants')
-          .where('ownerId', isEqualTo: user.id)
-          .limit(1)
-          .get();
-
-      if (query.docs.isNotEmpty) {
-        final doc = query.docs.first;
-        setState(() {
-          _restaurant = RestaurantModel.fromJson({'id': doc.id, ...doc.data()});
-          _loading = false;
-        });
+      final list = await _apiService.getRestaurants();
+      if (list.isNotEmpty) {
+        final rest = list.first;
+        final menu = await _apiService.getMenu(rest.id);
+        if (mounted) {
+          setState(() {
+            _restaurant = rest;
+            _menuItems = menu;
+            _loading = false;
+          });
+        }
       } else {
-        setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -93,6 +94,11 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       );
     }
 
+    List<MenuItemModel> items = _menuItems;
+    if (_selectedCategory != 'Todas') {
+      items = items.where((i) => i.category == _selectedCategory).toList();
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Gestión del Menú - ${_restaurant!.name}', style: AppTextStyles.headline),
@@ -129,7 +135,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Filtro de Categorías
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -154,30 +159,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // Lista de Menú
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('restaurants')
-                        .doc(_restaurant!.id)
-                        .collection('menu')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                      }
-
-                      final docs = snapshot.data?.docs ?? [];
-                      List<MenuItemModel> items = docs
-                          .map((d) => MenuItemModel.fromJson({'id': d.id, ...d.data() as Map<String, dynamic>}))
-                          .toList();
-
-                      if (_selectedCategory != 'Todas') {
-                        items = items.where((i) => i.category == _selectedCategory).toList();
-                      }
-
-                      if (items.isEmpty) {
-                        return Center(
+                  child: items.isEmpty
+                      ? Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -188,40 +172,36 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               Text('Haz clic en "+ Agregar Plato" para crear tu primer ítem.', style: AppTextStyles.subtle),
                             ],
                           ),
-                        );
-                      }
+                        )
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            int crossAxisCount = 1;
+                            if (constraints.maxWidth > 900) {
+                              crossAxisCount = 3;
+                            } else if (constraints.maxWidth > 600) {
+                              crossAxisCount = 2;
+                            }
 
-                      return LayoutBuilder(
-                        builder: (context, constraints) {
-                          int crossAxisCount = 1;
-                          if (constraints.maxWidth > 900) {
-                            crossAxisCount = 3;
-                          } else if (constraints.maxWidth > 600) {
-                            crossAxisCount = 2;
-                          }
-
-                          return GridView.builder(
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
-                              crossAxisSpacing: 16,
-                              mainAxisSpacing: 16,
-                              childAspectRatio: 1.15,
-                            ),
-                            itemCount: items.length,
-                            itemBuilder: (context, index) {
-                              final item = items[index];
-                              return _MenuItemCard(
-                                item: item,
-                                onEdit: () => _showAddEditItemDialog(item: item),
-                                onDelete: () => _deleteMenuItem(item),
-                                onToggleAvailable: (val) => _toggleAvailability(item, val),
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
+                            return GridView.builder(
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                childAspectRatio: 1.15,
+                              ),
+                              itemCount: items.length,
+                              itemBuilder: (context, index) {
+                                final item = items[index];
+                                return _MenuItemCard(
+                                  item: item,
+                                  onEdit: () => _showAddEditItemDialog(item: item),
+                                  onDelete: () => _deleteMenuItem(item),
+                                  onToggleAvailable: (val) => _toggleAvailability(item, val),
+                                );
+                              },
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -231,56 +211,27 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     );
   }
 
-  Future<void> _toggleAvailability(MenuItemModel item, bool isAvailable) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('restaurants')
-          .doc(_restaurant!.id)
-          .collection('menu')
-          .doc(item.id)
-          .update({'isAvailable': isAvailable});
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al actualizar disponibilidad: $e')),
+  void _toggleAvailability(MenuItemModel item, bool isAvailable) {
+    setState(() {
+      final index = _menuItems.indexWhere((i) => i.id == item.id);
+      if (index != -1) {
+        _menuItems[index] = MenuItemModel(
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          price: item.price,
+          category: item.category,
+          imageUrl: item.imageUrl,
+          isAvailable: isAvailable,
         );
       }
-    }
+    });
   }
 
-  Future<void> _deleteMenuItem(MenuItemModel item) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar Platillo'),
-        content: Text('¿Seguro que deseas eliminar "${item.name}" del menú?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('restaurants')
-            .doc(_restaurant!.id)
-            .collection('menu')
-            .doc(item.id)
-            .delete();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al eliminar: $e')),
-          );
-        }
-      }
-    }
+  void _deleteMenuItem(MenuItemModel item) {
+    setState(() {
+      _menuItems.removeWhere((i) => i.id == item.id);
+    });
   }
 
   Future<void> _showAddEditItemDialog({MenuItemModel? item}) async {
@@ -307,7 +258,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Imagen del Plato
                       GestureDetector(
                         onTap: () async {
                           final file = await picker.pickImage(source: ImageSource.gallery);
@@ -409,25 +359,24 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               }
                             }
 
-                            final data = {
-                              'name': nameCtrl.text.trim(),
-                              'description': descCtrl.text.trim(),
-                              'price': double.tryParse(priceCtrl.text.trim()) ?? 0.0,
-                              'category': category,
-                              'imageUrl': imageUrl ?? '',
-                              'isAvailable': item?.isAvailable ?? true,
-                            };
+                            final newItem = MenuItemModel(
+                              id: item?.id ?? 'm_${DateTime.now().millisecondsSinceEpoch}',
+                              name: nameCtrl.text.trim(),
+                              description: descCtrl.text.trim(),
+                              price: double.tryParse(priceCtrl.text.trim()) ?? 0.0,
+                              category: category,
+                              imageUrl: imageUrl,
+                              isAvailable: item?.isAvailable ?? true,
+                            );
 
-                            final menuRef = FirebaseFirestore.instance
-                                .collection('restaurants')
-                                .doc(_restaurant!.id)
-                                .collection('menu');
-
-                            if (item == null) {
-                              await menuRef.add(data);
-                            } else {
-                              await menuRef.doc(item.id).update(data);
-                            }
+                            setState(() {
+                              if (item == null) {
+                                _menuItems.add(newItem);
+                              } else {
+                                final idx = _menuItems.indexWhere((i) => i.id == item.id);
+                                if (idx != -1) _menuItems[idx] = newItem;
+                              }
+                            });
 
                             if (context.mounted) Navigator.pop(context);
                           } catch (e) {
@@ -483,7 +432,6 @@ class _MenuItemCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Foto
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             child: Container(

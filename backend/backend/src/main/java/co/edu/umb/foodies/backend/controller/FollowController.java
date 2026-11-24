@@ -8,7 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/follows")
+@RequestMapping("/api/v1/follows")
 @RequiredArgsConstructor
 public class FollowController {
 
@@ -18,19 +18,22 @@ public class FollowController {
     @PostMapping("/{userId}")
     public ResponseEntity<Void> follow(@PathVariable String userId, HttpServletRequest request) {
         String followerId = getUserIdFromRequest(request);
-        userService.follow(followerId, userId);
+        if (followerId != null) userService.follow(followerId, userId);
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{userId}")
     public ResponseEntity<Void> unfollow(@PathVariable String userId, HttpServletRequest request) {
         String followerId = getUserIdFromRequest(request);
-        userService.unfollow(followerId, userId);
+        if (followerId != null) userService.unfollow(followerId, userId);
         return ResponseEntity.ok().build();
     }
 
     private String getUserIdFromRequest(HttpServletRequest request) {
-        String token = request.getHeader("Authorization").substring(7);
-        return jwtUtil.getUserId(token);
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return jwtUtil.getUserId(header.substring(7));
+        }
+        return null;
     }
 }

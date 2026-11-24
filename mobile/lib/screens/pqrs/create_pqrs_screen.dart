@@ -1,9 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
+import '../../core/services/api_service.dart';
 import '../../providers/auth_provider.dart';
 
 class CreatePqrsScreen extends StatefulWidget {
@@ -17,15 +17,18 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
   final _formKey = GlobalKey<FormState>();
   final _asuntoCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final ApiService _apiService = ApiService();
 
   String _tipo = 'peticion';
   bool _loading = false;
   late TabController _tabController;
+  List<Map<String, dynamic>> _myPqrsList = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadPqrs();
   }
 
   @override
@@ -34,6 +37,15 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
     _descCtrl.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPqrs() async {
+    try {
+      final list = await _apiService.getPQRS();
+      if (mounted) {
+        setState(() => _myPqrsList = list);
+      }
+    } catch (_) {}
   }
 
   Future<void> _submitPqrs() async {
@@ -45,19 +57,13 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
     setState(() => _loading = true);
 
     try {
-      final docRef = FirebaseFirestore.instance.collection('pqrs').doc();
-      await docRef.set({
+      await _apiService.createPQRS({
         'clienteId': user.id,
         'clienteEmail': user.email,
         'clienteNombre': user.fullName ?? user.username,
-        'empleadoId': null,
         'tipo': _tipo,
         'asunto': _asuntoCtrl.text.trim(),
         'descripcion': _descCtrl.text.trim(),
-        'estado': 'recibida',
-        'respuesta': '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
@@ -70,6 +76,7 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
           backgroundColor: Colors.green,
         ),
       );
+      await _loadPqrs();
       _tabController.animateTo(1);
     } catch (e) {
       if (!mounted) return;
@@ -101,7 +108,6 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Tab 1: Radicar Nueva PQRS
           SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Form(
@@ -165,42 +171,28 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
             ),
           ),
 
-          // Tab 2: Mis Radicados e Historial en Tiempo Real
           user == null
               ? const Center(child: Text('Debes iniciar sesión para ver tus radicados.'))
-              : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: FirebaseFirestore.instance
-                      .collection('pqrs')
-                      .where('clienteId', isEqualTo: user.id)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                    }
-
-                    final docs = snapshot.data?.docs ?? [];
-                    if (docs.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.inbox_outlined, size: 64, color: AppColors.secondary),
-                            const SizedBox(height: 16),
-                            Text('No tienes radicados registrados', style: AppTextStyles.headline),
-                            const SizedBox(height: 6),
-                            Text('Tus peticiones y sus respuestas aparecerán aquí.', style: AppTextStyles.subtle),
-                          ],
-                        ),
-                      );
-                    }
-
-                    return ListView.separated(
+              : _myPqrsList.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.inbox_outlined, size: 64, color: AppColors.secondary),
+                          const SizedBox(height: 16),
+                          Text('No tienes radicados registrados', style: AppTextStyles.headline),
+                          const SizedBox(height: 6),
+                          Text('Tus peticiones y sus respuestas aparecerán aquí.', style: AppTextStyles.subtle),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
                       padding: const EdgeInsets.all(20),
-                      itemCount: docs.length,
+                      itemCount: _myPqrsList.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 16),
                       itemBuilder: (context, i) {
-                        final data = docs[i].data();
-                        final estado = data['estado'] as String? ?? 'recibida';
+                        final data = _myPqrsList[i];
+                        final estado = data['status'] ?? data['estado'] ?? 'recibida';
                         final respuesta = data['respuesta'] as String? ?? '';
 
                         Color estadoColor = Colors.orange;
@@ -233,7 +225,7 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
-                                      data['tipo']?.toString().toUpperCase() ?? 'PQRS',
+                                      data['type']?.toString().toUpperCase() ?? data['tipo']?.toString().toUpperCase() ?? 'PQRS',
                                       style: AppTextStyles.caption.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold),
                                     ),
                                   ),
@@ -246,9 +238,9 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
                                 ],
                               ),
                               const SizedBox(height: 10),
-                              Text(data['asunto'] ?? 'Sin Asunto', style: AppTextStyles.title),
+                              Text(data['subject'] ?? data['asunto'] ?? 'Sin Asunto', style: AppTextStyles.title),
                               const SizedBox(height: 6),
-                              Text(data['descripcion'] ?? '', style: AppTextStyles.body),
+                              Text(data['description'] ?? data['descripcion'] ?? '', style: AppTextStyles.body),
                               if (respuesta.isNotEmpty) ...[
                                 const Divider(height: 24),
                                 Container(
@@ -278,9 +270,7 @@ class _CreatePqrsScreenState extends State<CreatePqrsScreen> with SingleTickerPr
                           ),
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
         ],
       ),
     );

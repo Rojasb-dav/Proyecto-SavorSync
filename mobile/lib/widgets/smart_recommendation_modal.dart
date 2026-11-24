@@ -1,8 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/constants/colors.dart';
 import '../core/constants/text_styles.dart';
+import '../core/services/api_service.dart';
 import '../models/restaurant_model.dart';
 import '../screens/restaurants/restaurant_detail_screen.dart';
 
@@ -20,6 +20,7 @@ class _SmartRecommendationModalState extends State<SmartRecommendationModal> {
 
   bool _calculating = false;
   List<Map<String, dynamic>> _recommendations = [];
+  final ApiService _apiService = ApiService();
 
   static const List<String> _budgets = [
     '< \$30.000 COP',
@@ -46,14 +47,12 @@ class _SmartRecommendationModalState extends State<SmartRecommendationModal> {
     setState(() => _calculating = true);
 
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('restaurants').get();
-      final docs = snapshot.docs;
+      final list = await _apiService.getRestaurants();
 
       final results = <Map<String, dynamic>>[];
 
-      for (var i = 0; i < docs.length; i++) {
-        final d = docs[i];
-        final rest = RestaurantModel.fromJson({'id': d.id, ...d.data()});
+      for (var i = 0; i < list.length; i++) {
+        final rest = list[i];
 
         int score = 80;
         if (rest.address.toLowerCase().contains(_zone.split(' ').first.toLowerCase())) {
