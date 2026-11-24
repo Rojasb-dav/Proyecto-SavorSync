@@ -1,8 +1,10 @@
 package co.edu.umb.foodies.backend.controller;
 
+import co.edu.umb.foodies.backend.dto.CommentDTO;
 import co.edu.umb.foodies.backend.dto.PostDTO;
 import co.edu.umb.foodies.backend.model.Comment;
 import co.edu.umb.foodies.backend.model.Notification;
+import co.edu.umb.foodies.backend.model.User;
 import co.edu.umb.foodies.backend.repository.CommentRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.PostRepository;
@@ -18,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/posts")
@@ -60,12 +63,17 @@ public class PostController {
     }
 
     @GetMapping("/{postId}/comments")
-    public ResponseEntity<List<Comment>> getComments(@PathVariable String postId) {
-        return ResponseEntity.ok(commentRepository.findByPostId(postId));
+    public ResponseEntity<List<CommentDTO>> getComments(@PathVariable String postId) {
+        List<Comment> comments = commentRepository.findByPostId(postId);
+        List<CommentDTO> dtos = comments.stream().map(c -> {
+            User author = userRepository.findById(c.getClienteId()).orElse(null);
+            return CommentDTO.from(c, author);
+        }).collect(Collectors.toList());
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping("/{postId}/comments")
-    public ResponseEntity<Comment> addComment(@PathVariable String postId, @RequestBody Map<String, Object> body, HttpServletRequest request) {
+    public ResponseEntity<CommentDTO> addComment(@PathVariable String postId, @RequestBody Map<String, Object> body, HttpServletRequest request) {
         String userId = getUserIdFromRequest(request);
         String content = body.get("content") != null ? body.get("content").toString() : "";
         if (content.isBlank() && body.get("contenido") != null) {
@@ -85,14 +93,12 @@ public class PostController {
                 .build();
 
         Comment savedComment = commentRepository.save(comment);
+        User author = userRepository.findById(authorId).orElse(null);
 
         try {
             postRepository.findById(postId).ifPresent(post -> {
                 if (!post.getUser().getId().equals(authorId)) {
-                    String commenterName = "Un usuario";
-                    if (userId != null) {
-                        commenterName = userRepository.findById(userId).map(u -> "@" + u.getUsername()).orElse("Un usuario");
-                    }
+                    String commenterName = author != null ? "@" + author.getUsername() : "Un usuario";
                     notificationRepository.save(Notification.builder()
                             .id(UUID.randomUUID().toString())
                             .clienteId(post.getUser().getId())
@@ -109,7 +115,7 @@ public class PostController {
             System.err.println("WARN: Fallo al notificar comentario: " + e.getMessage());
         }
 
-        return ResponseEntity.ok(savedComment);
+        return ResponseEntity.ok(CommentDTO.from(savedComment, author));
     }
 
     @PostMapping("/{postId}/like")

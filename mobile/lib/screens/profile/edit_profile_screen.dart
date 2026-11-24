@@ -54,6 +54,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return;
 
+      if (!mounted) return;
       final user = context.read<AuthProvider>().user;
       if (user == null) return;
 
