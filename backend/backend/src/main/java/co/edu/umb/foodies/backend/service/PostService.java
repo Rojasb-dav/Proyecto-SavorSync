@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -50,6 +51,7 @@ public class PostService {
                 .contenido(dto.getContent())
                 .rating(dto.getRating())
                 .imageUrl(dto.getImageUrl())
+                .likedBy(new HashSet<>())
                 .build();
         
         post = postRepository.save(post);
@@ -63,6 +65,10 @@ public class PostService {
                 .orElseThrow(() -> new RuntimeException("Publicación no encontrada"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+
+        if (post.getLikedBy() == null) {
+            post.setLikedBy(new HashSet<>());
+        }
 
         if (post.getLikedBy().contains(user)) {
             post.getLikedBy().remove(user);
@@ -99,21 +105,24 @@ public class PostService {
     }
 
     private PostDTO convertToDTO(Post post, String currentUserId) {
+        int likesCount = (post.getLikedBy() != null) ? post.getLikedBy().size() : 0;
+        boolean likedByMe = currentUserId != null && post.getLikedBy() != null &&
+                post.getLikedBy().stream().anyMatch(u -> u.getId().equals(currentUserId));
+
         return PostDTO.builder()
                 .id(post.getId())
-                .userId(post.getUser().getId())
-                .username(post.getUser().getUsername())
-                .fullName(post.getUser().getFullName())
-                .userAvatarUrl(post.getUser().getAvatarUrl())
+                .userId(post.getUser() != null ? post.getUser().getId() : "")
+                .username(post.getUser() != null ? post.getUser().getUsername() : "")
+                .fullName(post.getUser() != null ? post.getUser().getFullName() : "")
+                .userAvatarUrl(post.getUser() != null ? post.getUser().getAvatarUrl() : null)
                 .restaurantName(post.getRestaurantName())
                 .restaurantAddress(post.getRestaurantAddress())
                 .content(post.getContenido())
                 .rating(post.getRating())
                 .imageUrl(post.getImageUrl())
-                .likesCount(post.getLikedBy() != null ? post.getLikedBy().size() : 0)
+                .likesCount(likesCount)
                 .commentsCount(0)
-                .likedByMe(post.getLikedBy() != null && post.getLikedBy().stream()
-                        .anyMatch(u -> u.getId().equals(currentUserId)))
+                .likedByMe(likedByMe)
                 .createdAt(post.getCreatedAt())
                 .build();
     }

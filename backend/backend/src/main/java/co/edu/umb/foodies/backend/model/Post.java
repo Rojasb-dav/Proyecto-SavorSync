@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -53,7 +54,7 @@ public class Post {
     }
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado", columnDefinition = "ENUM('borrador','publicada','oculta','en_revision')")
+    @Column(name = "estado")
     private PostStatus status;
 
     @Column(name = "created_at", updatable = false)
@@ -68,7 +69,8 @@ public class Post {
         joinColumns = @JoinColumn(name = "publicacion_id"),
         inverseJoinColumns = @JoinColumn(name = "cliente_id")
     )
-    private Set<User> likedBy;
+    @Builder.Default
+    private Set<User> likedBy = new HashSet<>();
 
     @PrePersist
     public void prePersist() {
@@ -77,6 +79,7 @@ public class Post {
         if (commentsCount == null) commentsCount = 0;
         if (isPublic == null) isPublic = true;
         if (status == null) status = PostStatus.publicada;
+        if (likedBy == null) likedBy = new HashSet<>();
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;
