@@ -62,15 +62,37 @@ public class JwtUtil {
     }
 
     public String getUserId(String token) {
-        return parse(token).get("userId", String.class);
+        try {
+            Claims claims = parse(token);
+            String uid = claims.get("userId", String.class);
+            if (uid == null || uid.isBlank()) {
+                uid = claims.getSubject();
+            }
+            return uid;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public String getEmail(String token) {
-        return parse(token).get("email", String.class);
+        try {
+            Claims claims = parse(token);
+            String em = claims.get("email", String.class);
+            if (em == null || em.isBlank()) {
+                em = claims.getSubject();
+            }
+            return em;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public String getRole(String token) {
-        return parse(token).get("role", String.class);
+        try {
+            return parse(token).get("role", String.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public boolean isValid(String token) {
