@@ -15,7 +15,6 @@ import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,6 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -65,6 +65,7 @@ public class AuthService {
         }
 
         User user = User.builder()
+                .id(UUID.randomUUID().toString())
                 .email(req.getEmail().trim())
                 .username(req.getUsername().trim())
                 .password(passwordEncoder.encode(req.getPassword().trim()))
@@ -198,12 +199,15 @@ public class AuthService {
             }
 
             AuthSession session = AuthSession.builder()
+                    .id(UUID.randomUUID().toString())
                     .userId(user.getId())
                     .sessionToken(truncatedSessionToken)
                     .platform(AuthSession.Platform.mobile)
-                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : null)
+                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
                     .expiresAt(LocalDateTime.now().plusNanos(jwtUtil.getExpirationMs() * 1_000_000L))
                     .isActive(true)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
                     .build();
             authSessionRepository.save(session);
         } catch (Exception e) {
