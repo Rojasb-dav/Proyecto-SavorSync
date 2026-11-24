@@ -111,23 +111,26 @@ public class AuthService {
 
     @Transactional
     public void forgotPassword(String email) {
-        userRepository.findByEmail(email).ifPresent(user -> {
+        userRepository.findByEmail(email.trim().toLowerCase()).ifPresent(user -> {
             String code = String.format("%06d", new Random().nextInt(999999));
             
-            passwordResetTokenRepository.deleteByEmail(email);
-            passwordResetTokenRepository.save(PasswordResetToken.builder()
-                    .email(email)
+            try {
+                passwordResetTokenRepository.deleteByEmail(user.getEmail());
+                passwordResetTokenRepository.flush();
+            } catch (Exception ignored) {}
+
+            passwordResetTokenRepository.saveAndFlush(PasswordResetToken.builder()
+                    .email(user.getEmail())
                     .code(code)
                     .expiresAt(LocalDateTime.now().plusHours(24))
                     .build());
 
-            // Enviar correo asincrónicamente en segundo plano
             CompletableFuture.runAsync(() -> {
                 try {
                     MimeMessage mimeMessage = mailSender.createMimeMessage();
                     MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
                     helper.setFrom("SavorSync <" + senderEmail + ">");
-                    helper.setTo(email);
+                    helper.setTo(user.getEmail());
                     helper.setSubject("🔑 Código de Recuperación de Contraseña - SavorSync");
 
                     String htmlBody = "<html>" +
@@ -158,16 +161,6 @@ public class AuthService {
                     mailSender.send(mimeMessage);
                 } catch (Exception e) {
                     System.err.println("WARN: Fallo al enviar correo HTML con MimeMessage: " + e.getMessage());
-                    try {
-                        SimpleMailMessage fallbackMsg = new SimpleMailMessage();
-                        fallbackMsg.setFrom("SavorSync <" + senderEmail + ">");
-                        fallbackMsg.setTo(email);
-                        fallbackMsg.setSubject("Código de Recuperación - SavorSync");
-                        fallbackMsg.setText("Hola " + user.getFullName() + ",\n\nTu código de recuperación es: " + code + "\n\nAtentamente,\nEl equipo de SavorSync.");
-                        mailSender.send(fallbackMsg);
-                    } catch (Exception ex) {
-                        System.err.println("ERROR al enviar correo de recuperacion: " + ex.getMessage());
-                    }
                 }
             });
         });

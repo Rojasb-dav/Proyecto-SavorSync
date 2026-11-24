@@ -12,7 +12,7 @@ import java.util.Optional;
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, String> {
     Optional<PasswordResetToken> findByEmailAndCode(String email, String code);
     
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PasswordResetToken p WHERE p.email = ?1")
     void deleteByEmail(String email);
 }
