@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
 
 import '../../models/comment_model.dart';
 import '../../models/menu_item_model.dart';
@@ -66,7 +65,7 @@ class ApiService {
       final list = response.data as List;
       return list.map((e) => PostModel.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      return _getSeedPosts();
+      return [];
     }
   }
 
@@ -76,7 +75,7 @@ class ApiService {
       final list = response.data as List;
       return list.map((e) => PostModel.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      return _getSeedPosts().where((p) => p.userId == userId || userId == 'demo').toList();
+      return [];
     }
   }
 
@@ -120,16 +119,7 @@ class ApiService {
       final list = response.data as List;
       return list.map((e) => CommentModel.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      return [
-        CommentModel(
-          id: 'c1',
-          postId: postId,
-          authorId: 'u1',
-          authorName: 'bogota_foodie',
-          content: '¡Excelente recomendación en Bogotá!',
-          createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-        )
-      ];
+      return [];
     }
   }
 
@@ -148,7 +138,7 @@ class ApiService {
       final list = response.data as List;
       return list.map((e) => RestaurantModel.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      return _getSeedRestaurants();
+      return [];
     }
   }
 
@@ -170,24 +160,7 @@ class ApiService {
       final list = response.data as List;
       return list.map((e) => MenuItemModel.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      return [
-        MenuItemModel(
-          id: 'm1',
-          name: 'Plato Insignia SavorSync',
-          description: 'Especialidad gourmet de la casa',
-          category: 'Principales',
-          price: 38000,
-          isAvailable: true,
-        ),
-        MenuItemModel(
-          id: 'm2',
-          name: 'Jugo Natural de Lulo',
-          description: 'Bebida artesanal fresca',
-          category: 'Bebidas',
-          price: 9000,
-          isAvailable: true,
-        ),
-      ];
+      return [];
     }
   }
 
@@ -203,21 +176,7 @@ class ApiService {
       final list = response.data as List;
       return list.map((e) => ReservationModel.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      return [
-        ReservationModel(
-          id: 'res_1001',
-          restaurantId: restaurantId ?? 'rest_1',
-          restaurantName: 'Andrés Carne de Res',
-          clienteId: userId ?? 'user_1',
-          clienteNombre: 'Foodie Cliente',
-          fechaReserva: DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1))),
-          horaReserva: '19:30',
-          numPersonas: 4,
-          estado: 'confirmada',
-          notas: 'Mesa cerca a la ventana',
-          createdAt: DateTime.now(),
-        ),
-      ];
+      return [];
     }
   }
 
@@ -258,16 +217,7 @@ class ApiService {
       final response = await _dio.get('/pqrs');
       return (response.data as List).map((e) => Map<String, dynamic>.from(e)).toList();
     } catch (e) {
-      return [
-        {
-          'id': 'pqrs_1',
-          'type': 'Petición',
-          'subject': 'Solicitud de nueva mesa',
-          'description': 'Me gustaría reservar una mesa grande para 12 personas.',
-          'status': 'En revisión',
-          'createdAt': DateTime.now().toIso8601String(),
-        }
-      ];
+      return [];
     }
   }
 
@@ -290,17 +240,7 @@ class ApiService {
       final list = response.data as List;
       return list.map((e) => NotificationModel.fromJson(Map<String, dynamic>.from(e))).toList();
     } catch (e) {
-      return [
-        NotificationModel(
-          id: 'n1',
-          userId: userId,
-          title: '¡Bienvenido a SavorSync!',
-          body: 'Explora los mejores restaurantes y experiencias gastronómicas de Bogotá.',
-          type: 'system',
-          read: false,
-          createdAt: DateTime.now(),
-        )
-      ];
+      return [];
     }
   }
 
@@ -308,83 +248,5 @@ class ApiService {
     try {
       await _dio.put('/notifications/$id/read');
     } catch (_) {}
-  }
-
-  // SEED DATA LOCAL DE RESPALDO
-  List<PostModel> _getSeedPosts() {
-    return [
-      PostModel(
-        id: 'post_101',
-        userId: 'u_andres',
-        username: 'andres_foodie',
-        fullName: 'Andrés Rodríguez',
-        restaurantName: 'Andrés Carne de Res',
-        restaurantAddress: 'Calle 82 # 12-21, Zona T',
-        content: '¡Increíble ambiente y los mejores cortes de carne en la Zona T de Bogotá! 100% recomendado.',
-        rating: 4.9,
-        imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
-        createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-        likesCount: 24,
-        commentsCount: 5,
-      ),
-      PostModel(
-        id: 'post_102',
-        userId: 'u_maria',
-        username: 'maria_gourmet',
-        fullName: 'María Paula Gómez',
-        restaurantName: 'Crepes & Waffles',
-        restaurantAddress: 'Carrera 11 # 85-09',
-        content: 'Un crepe de pollo al curry delicioso acompañado de helado artesanal. ¡Clásico imperdible!',
-        rating: 4.8,
-        imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80',
-        createdAt: DateTime.now().subtract(const Duration(hours: 6)),
-        likesCount: 18,
-        commentsCount: 2,
-      ),
-    ];
-  }
-
-  List<RestaurantModel> _getSeedRestaurants() {
-    return [
-      const RestaurantModel(
-        id: 'rest_1',
-        name: 'Andrés Carne de Res',
-        description: 'Icónico restaurante colombiano con música, parrilla y ambiente festivo.',
-        address: 'Calle 82 # 12-21, Zona T',
-        category: 'Parrilla',
-        latitude: 4.6669,
-        longitude: -74.0545,
-        imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
-        ratingAverage: 4.8,
-        reviewsCount: 120,
-        status: 'activo',
-      ),
-      const RestaurantModel(
-        id: 'rest_2',
-        name: 'Crepes & Waffles',
-        description: 'Arte transformado en helado y crepes artesanales en Bogotá.',
-        address: 'Carrera 11 # 85-09',
-        category: 'Postres',
-        latitude: 4.6702,
-        longitude: -74.0583,
-        imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=800&q=80',
-        ratingAverage: 4.7,
-        reviewsCount: 210,
-        status: 'activo',
-      ),
-      const RestaurantModel(
-        id: 'rest_3',
-        name: 'Wok Zona G',
-        description: 'Gastronomía asiática sustentable y variada en Bogotá.',
-        address: 'Carrera 5 # 69-10, Zona G',
-        category: 'Asiática',
-        latitude: 4.6521,
-        longitude: -74.0551,
-        imageUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=800&q=80',
-        ratingAverage: 4.6,
-        reviewsCount: 90,
-        status: 'activo',
-      ),
-    ];
   }
 }

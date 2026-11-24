@@ -49,8 +49,8 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
       final q = _searchQuery.toLowerCase().trim();
       _filteredUsers = _users.where((u) {
         final fn = (u.fullName ?? '').toLowerCase();
-        final un = (u.username ?? '').toLowerCase();
-        final em = (u.email ?? '').toLowerCase();
+        final un = u.username.toLowerCase();
+        final em = u.email.toLowerCase();
         final rl = (u.role ?? '').toLowerCase();
         return fn.contains(q) || un.contains(q) || em.contains(q) || rl.contains(q);
       }).toList();
@@ -62,8 +62,9 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
       await _apiService.dio.put('/users/${user.id}/status');
       _loadUsers();
       if (!mounted) return;
+      final name = user.fullName ?? user.username;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Estado de ${user.fullName} actualizado')),
+        SnackBar(content: Text('Estado de $name actualizado')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -74,11 +75,12 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
   }
 
   Future<void> _deleteUser(UserModel user) async {
+    final name = user.fullName ?? user.username;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar Usuario'),
-        content: Text('¿Seguro que deseas eliminar definitivamente a ${user.fullName} (@${user.username})?'),
+        content: Text('¿Seguro que deseas eliminar definitivamente a $name (@${user.username})?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
           ElevatedButton(
@@ -97,7 +99,7 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
       _loadUsers();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Usuario ${user.fullName} eliminado')),
+        SnackBar(content: Text('Usuario $name eliminado')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -274,8 +276,10 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
                               roleLabel = 'Admin Restaurante 🏪';
                             }
 
-                            final fullNameStr = user.fullName ?? 'Usuario';
-                            final displayInitial = fullNameStr.isNotEmpty ? fullNameStr[0].toUpperCase() : 'U';
+                            final nameStr = (user.fullName != null && user.fullName!.isNotEmpty)
+                                ? user.fullName!
+                                : user.username;
+                            final displayInitial = nameStr.isNotEmpty ? nameStr[0].toUpperCase() : 'U';
 
                             return ListTile(
                               leading: CircleAvatar(
@@ -287,7 +291,7 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
                               ),
                               title: Row(
                                 children: [
-                                  Text(fullNameStr, style: AppTextStyles.title.copyWith(fontSize: 15)),
+                                  Text(nameStr, style: AppTextStyles.title.copyWith(fontSize: 15)),
                                   const SizedBox(width: 8),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
