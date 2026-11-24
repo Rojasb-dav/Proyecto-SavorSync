@@ -2,6 +2,7 @@ package co.edu.umb.foodies.backend.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -15,9 +16,11 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Post {
 
     @Id
+    @EqualsAndHashCode.Include
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 

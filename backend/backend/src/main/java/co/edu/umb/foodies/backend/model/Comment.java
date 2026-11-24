@@ -1,7 +1,10 @@
 package co.edu.umb.foodies.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -13,6 +16,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Comment {
 
     public enum CommentStatus {
@@ -20,21 +24,32 @@ public class Comment {
     }
 
     @Id
+    @EqualsAndHashCode.Include
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
+    @JsonProperty("postId")
+    @JsonAlias({"publicacion_id", "postId", "post_id"})
     @Column(name = "publicacion_id", length = 36, nullable = false)
     private String postId;
 
+    @JsonProperty("clienteId")
+    @JsonAlias({"cliente_id", "authorId", "author_id", "userId", "user_id", "clienteId"})
     @Column(name = "cliente_id", length = 36, nullable = false)
     private String clienteId;
 
+    @JsonProperty("parentId")
+    @JsonAlias({"parent_id", "parentId"})
     @Column(name = "parent_id", length = 36)
     private String parentId;
 
+    @JsonProperty("content")
+    @JsonAlias({"contenido", "content"})
     @Column(name = "contenido", nullable = false, length = 2000)
     private String content;
 
+    @JsonProperty("status")
+    @JsonAlias({"estado", "status"})
     @Enumerated(EnumType.STRING)
     @Column(name = "estado")
     private CommentStatus status;
