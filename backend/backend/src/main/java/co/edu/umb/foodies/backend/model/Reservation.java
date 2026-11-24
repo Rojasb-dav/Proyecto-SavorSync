@@ -52,6 +52,8 @@ public class Reservation {
     @Column(name = "hora_reserva", nullable = false)
     private LocalTime horaReserva;
 
+    @JsonProperty("estado")
+    @JsonAlias({"status", "estado"})
     @Enumerated(EnumType.STRING)
     @Column(name = "estado", nullable = false)
     private ReservationStatus estado;

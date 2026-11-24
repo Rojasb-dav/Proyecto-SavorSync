@@ -4,9 +4,11 @@ import co.edu.umb.foodies.backend.model.Reservation;
 import co.edu.umb.foodies.backend.repository.ReservationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/reservations")
@@ -34,10 +36,19 @@ public class ReservationController {
         return ResponseEntity.ok(reservationRepository.save(reservation));
     }
 
+    @Transactional
     @PutMapping("/{id}")
-    public ResponseEntity<Reservation> updateStatus(@PathVariable String id, @RequestBody Reservation body) {
+    public ResponseEntity<Reservation> updateStatus(@PathVariable String id, @RequestBody Map<String, Object> body) {
         return reservationRepository.findById(id).map(r -> {
-            r.setEstado(body.getEstado());
+            String statusStr = body.get("estado") != null ? body.get("estado").toString() : null;
+            if (statusStr == null && body.get("status") != null) {
+                statusStr = body.get("status").toString();
+            }
+            if (statusStr != null) {
+                try {
+                    r.setEstado(Reservation.ReservationStatus.valueOf(statusStr.trim().toLowerCase()));
+                } catch (Exception ignored) {}
+            }
             return ResponseEntity.ok(reservationRepository.save(r));
         }).orElse(ResponseEntity.notFound().build());
     }
