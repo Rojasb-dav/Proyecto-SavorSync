@@ -80,37 +80,16 @@ class ApiService {
   }
 
   Future<PostModel> createPost(Map<String, dynamic> data) async {
-    try {
-      final response = await _dio.post('/posts', data: data);
-      return PostModel.fromJson(Map<String, dynamic>.from(response.data));
-    } catch (e) {
-      return PostModel.fromJson({
-        'id': 'post_${DateTime.now().millisecondsSinceEpoch}',
-        'userId': data['userId'] ?? 'user_demo',
-        'username': data['username'] ?? 'FoodieUser',
-        'fullName': data['fullName'] ?? 'Foodie Demo',
-        'restaurantName': data['restaurantName'] ?? 'Restaurante Bogotá',
-        'restaurantAddress': data['restaurantAddress'] ?? 'Bogotá',
-        'content': data['content'] ?? data['contenido'] ?? '',
-        'rating': (data['rating'] ?? data['calificacion'] ?? 4.5).toDouble(),
-        'imageUrl': data['imageUrl'] ?? 'https://images.unsplash.com/photo-1544025162-d76694265947',
-        'createdAt': DateTime.now().toIso8601String(),
-        'likesCount': 0,
-        'commentsCount': 0,
-      });
-    }
+    final response = await _dio.post('/posts', data: data);
+    return PostModel.fromJson(Map<String, dynamic>.from(response.data));
   }
 
   Future<void> deletePost(String id) async {
-    try {
-      await _dio.delete('/posts/$id');
-    } catch (_) {}
+    await _dio.delete('/posts/$id');
   }
 
   Future<void> toggleLikePost(String postId) async {
-    try {
-      await _dio.post('/posts/$postId/like');
-    } catch (_) {}
+    await _dio.post('/posts/$postId/like');
   }
 
   Future<List<CommentModel>> getComments(String postId) async {
@@ -124,9 +103,7 @@ class ApiService {
   }
 
   Future<void> addComment(String postId, Map<String, dynamic> commentData) async {
-    try {
-      await _dio.post('/posts/$postId/comments', data: commentData);
-    } catch (_) {}
+    await _dio.post('/posts/$postId/comments', data: commentData);
   }
 
   // ===========================================================================
@@ -143,15 +120,11 @@ class ApiService {
   }
 
   Future<void> createRestaurant(Map<String, dynamic> data) async {
-    try {
-      await _dio.post('/restaurants', data: data);
-    } catch (_) {}
+    await _dio.post('/restaurants', data: data);
   }
 
   Future<void> updateRestaurantStatus(String id, String status) async {
-    try {
-      await _dio.put('/restaurants/$id/status', data: {'status': status, 'estado': status});
-    } catch (_) {}
+    await _dio.put('/restaurants/$id/status', data: {'status': status, 'estado': status});
   }
 
   Future<List<MenuItemModel>> getMenu(String restaurantId) async {
@@ -181,34 +154,16 @@ class ApiService {
   }
 
   Future<ReservationModel> createReservation(Map<String, dynamic> data) async {
-    try {
-      final response = await _dio.post('/reservations', data: data);
-      return ReservationModel.fromJson(Map<String, dynamic>.from(response.data));
-    } catch (e) {
-      return ReservationModel.fromJson({
-        'id': 'res_${DateTime.now().millisecondsSinceEpoch}',
-        'restaurantId': data['restaurantId'] ?? 'r1',
-        'restaurantName': data['restaurantName'] ?? 'Restaurante Bogotá',
-        'clienteId': data['userId'] ?? 'u1',
-        'clienteNombre': data['userName'] ?? 'Foodie',
-        'fechaReserva': data['date'] ?? '2025-03-30',
-        'horaReserva': data['time'] ?? '20:00',
-        'numPersonas': data['guests'] ?? 2,
-        'estado': 'pendiente',
-        'notas': data['specialNotes'] ?? '',
-        'createdAt': DateTime.now().toIso8601String(),
-      });
-    }
+    final response = await _dio.post('/reservations', data: data);
+    return ReservationModel.fromJson(Map<String, dynamic>.from(response.data));
   }
 
   Future<void> updateReservationStatus(String reservationId, String status) async {
-    try {
-      final cleanStatus = status.trim().toLowerCase();
-      await _dio.put('/reservations/$reservationId', data: {
-        'status': cleanStatus,
-        'estado': cleanStatus,
-      });
-    } catch (_) {}
+    final cleanStatus = status.trim().toLowerCase();
+    await _dio.put('/reservations/$reservationId', data: {
+      'status': cleanStatus,
+      'estado': cleanStatus,
+    });
   }
 
   // PQRS
@@ -222,15 +177,11 @@ class ApiService {
   }
 
   Future<void> createPQRS(Map<String, dynamic> data) async {
-    try {
-      await _dio.post('/pqrs', data: data);
-    } catch (_) {}
+    await _dio.post('/pqrs', data: data);
   }
 
   Future<void> updatePQRSStatus(String id, String status) async {
-    try {
-      await _dio.put('/pqrs/$id', data: {'status': status, 'estado': status});
-    } catch (_) {}
+    await _dio.put('/pqrs/$id', data: {'status': status, 'estado': status});
   }
 
   // NOTIFICACIONES
@@ -245,8 +196,6 @@ class ApiService {
   }
 
   Future<void> markNotificationRead(String id) async {
-    try {
-      await _dio.put('/notifications/$id/read');
-    } catch (_) {}
+    await _dio.put('/notifications/$id/read');
   }
 }

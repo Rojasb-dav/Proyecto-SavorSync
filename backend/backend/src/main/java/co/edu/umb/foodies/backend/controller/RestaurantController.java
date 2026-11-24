@@ -5,10 +5,14 @@ import co.edu.umb.foodies.backend.model.Restaurant;
 import co.edu.umb.foodies.backend.repository.MenuItemRepository;
 import co.edu.umb.foodies.backend.repository.ReservationRepository;
 import co.edu.umb.foodies.backend.repository.RestaurantRepository;
+import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -20,6 +24,7 @@ public class RestaurantController {
     private final RestaurantRepository restaurantRepository;
     private final MenuItemRepository menuItemRepository;
     private final ReservationRepository reservationRepository;
+    private final JwtUtil jwtUtil;
 
     @GetMapping
     public ResponseEntity<List<Restaurant>> getAllRestaurants() {
@@ -34,25 +39,38 @@ public class RestaurantController {
     }
 
     @PostMapping
-    public ResponseEntity<Restaurant> createRestaurant(@RequestBody Restaurant restaurant) {
+    public ResponseEntity<Restaurant> createRestaurant(@RequestBody Restaurant restaurant, HttpServletRequest request) {
+        String authUserId = getUserIdFromRequest(request);
+        if (authUserId != null && !authUserId.isBlank()) {
+            restaurant.setOwnerId(authUserId);
+        }
+        if (restaurant.getStatus() == null) {
+            restaurant.setStatus(Restaurant.RestaurantStatus.pendiente);
+        }
         return ResponseEntity.ok(restaurantRepository.save(restaurant));
     }
 
     @PutMapping("/{id}/status")
     public ResponseEntity<Restaurant> updateStatus(@PathVariable String id, @RequestBody Restaurant body) {
         return restaurantRepository.findById(id).map(r -> {
-            r.setStatus(body.getStatus());
+            if (body.getStatus() != null) {
+                r.setStatus(body.getStatus());
+            }
             return ResponseEntity.ok(restaurantRepository.save(r));
         }).orElse(ResponseEntity.notFound().build());
     }
 
     @Transactional
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteRestaurant(@PathVariable String id) {
+    public ResponseEntity<Void> deleteRestaurant(@PathVariable String id, HttpServletRequest request) {
+        String authUserId = getUserIdFromRequest(request);
+        Restaurant restaurant = restaurantRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Restaurante no encontrado"));
+
         try {
             menuItemRepository.findByRestaurantId(id).forEach(menuItemRepository::delete);
             reservationRepository.findByRestaurantId(id).forEach(reservationRepository::delete);
-            restaurantRepository.deleteById(id);
+            restaurantRepository.delete(restaurant);
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             System.err.println("WARN: Error al borrar restaurante: " + e.getMessage());
@@ -69,5 +87,14 @@ public class RestaurantController {
     public ResponseEntity<MenuItem> createMenuItem(@PathVariable String id, @RequestBody MenuItem item) {
         item.setRestaurantId(id);
         return ResponseEntity.ok(menuItemRepository.save(item));
+    }
+
+    private String getUserIdFromRequest(HttpServletRequest request) {
+        if (request == null) return null;
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return jwtUtil.getUserId(header.substring(7));
+        }
+        return null;
     }
 }

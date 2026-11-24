@@ -1,5 +1,6 @@
 package co.edu.umb.foodies.backend.security.jwt;
 
+import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,6 +21,7 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final AuthSessionRepository authSessionRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -31,17 +33,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring(7);
             try {
                 if (jwtUtil.isValid(token)) {
-                    String userId = jwtUtil.getUserId(token);
-                    String email = jwtUtil.getEmail(token);
-                    String role = jwtUtil.getRole(token);
+                    // FALLO-17 Fix: Verificar revocación en tabla de sesiones
+                    boolean isSessionActive = authSessionRepository == null ||
+                            authSessionRepository.findBySessionTokenAndIsActiveTrue(token).isPresent();
 
-                    String principal = (userId != null && !userId.isBlank()) ? userId : email;
-                    if (principal != null && !principal.isBlank()) {
-                        var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + (role == null ? "foodie" : role).toUpperCase()));
-                        UsernamePasswordAuthenticationToken auth =
-                                new UsernamePasswordAuthenticationToken(principal, null, authorities);
-                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    if (isSessionActive) {
+                        String userId = jwtUtil.getUserId(token);
+                        String email = jwtUtil.getEmail(token);
+                        String role = jwtUtil.getRole(token);
+
+                        String principal = (userId != null && !userId.isBlank()) ? userId : email;
+                        if (principal != null && !principal.isBlank()) {
+                            var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + (role == null ? "foodie" : role).toUpperCase()));
+                            UsernamePasswordAuthenticationToken auth =
+                                    new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                            auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                            SecurityContextHolder.getContext().setAuthentication(auth);
+                        }
                     }
                 }
             } catch (Exception ignored) {

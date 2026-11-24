@@ -22,8 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -102,7 +102,8 @@ public class AuthService {
     @Transactional
     public void forgotPassword(String email) {
         userRepository.findByEmail(email.trim().toLowerCase()).ifPresent(user -> {
-            String code = String.format("%06d", new Random().nextInt(999999));
+            // FALLO-25 Fix: Generador criptográficamente seguro de 6 dígitos
+            String code = String.format("%06d", new SecureRandom().nextInt(900000) + 100000);
             
             try {
                 passwordResetTokenRepository.deleteByEmail(user.getEmail());
