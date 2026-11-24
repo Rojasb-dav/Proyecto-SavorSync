@@ -45,11 +45,15 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     try {
       final list = await _apiService.getRestaurants();
       if (list.isNotEmpty) {
-        final rest = list.first;
-        final menu = await _apiService.getMenu(rest.id);
+        // FALLO-21 Fix: Filtrar el restaurante por el propietario autenticado
+        final myRest = list.firstWhere(
+          (r) => r.ownerId == user.id,
+          orElse: () => list.first,
+        );
+        final menu = await _apiService.getMenu(myRest.id);
         if (mounted) {
           setState(() {
-            _restaurant = rest;
+            _restaurant = myRest;
             _menuItems = menu;
             _loading = false;
           });
@@ -101,412 +105,267 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Gestión del Menú - ${_restaurant!.name}', style: AppTextStyles.headline),
+        title: Text('Menú — ${_restaurant!.name}'),
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.primary,
-        onPressed: () => _showAddEditItemDialog(),
-        icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text('Agregar Plato', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Agregar Plato'),
+        onPressed: () => _showAddEditDialog(context),
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1200),
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: _categories.map((cat) {
+                final selected = _selectedCategory == cat;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(cat),
+                    selected: selected,
+                    selectedColor: AppColors.primary,
+                    labelStyle: TextStyle(
+                      color: selected ? Colors.white : AppColors.textPrimary,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    onSelected: (_) => setState(() => _selectedCategory = cat),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text('Carta & Menú Gastronómico', style: AppTextStyles.headline),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Administra los platillos, precios e imágenes disponibles para tus clientes.',
-                          style: AppTextStyles.subtle,
-                        ),
+                        const Icon(Icons.restaurant_menu_rounded, size: 48, color: Colors.grey),
+                        const SizedBox(height: 12),
+                        Text('No hay platos en esta categoría', style: AppTextStyles.subtle),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _categories.map((cat) {
-                      final isSel = _selectedCategory == cat;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: FilterChip(
-                          selected: isSel,
-                          label: Text(cat),
-                          selectedColor: AppColors.primary.withValues(alpha: 0.15),
-                          checkmarkColor: AppColors.primary,
-                          labelStyle: TextStyle(
-                            color: isSel ? AppColors.primary : AppColors.textPrimary,
-                            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                          ),
-                          onSelected: (_) => setState(() => _selectedCategory = cat),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) {
+                      final item = items[i];
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.divider),
                         ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                Expanded(
-                  child: items.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(12),
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SizedBox(
+                              width: 60,
+                              height: 60,
+                              child: item.imageUrl != null && item.imageUrl!.isNotEmpty
+                                  ? Image.network(item.imageUrl!, fit: BoxFit.cover)
+                                  : Container(
+                                      color: AppColors.primary.withValues(alpha: 0.1),
+                                      child: const Icon(Icons.fastfood_rounded, color: AppColors.primary),
+                                    ),
+                            ),
+                          ),
+                          title: Text(item.name, style: AppTextStyles.title.copyWith(fontSize: 15)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.restaurant_outlined, size: 54, color: AppColors.textSecondary),
-                              const SizedBox(height: 12),
-                              Text('No hay platillos en esta categoría', style: AppTextStyles.title),
+                              if (item.description.isNotEmpty)
+                                Text(item.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppTextStyles.caption),
                               const SizedBox(height: 4),
-                              Text('Haz clic en "+ Agregar Plato" para crear tu primer ítem.', style: AppTextStyles.subtle),
+                              Text(
+                                '\$${item.price.toStringAsFixed(0)}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 14),
+                              ),
                             ],
                           ),
-                        )
-                      : LayoutBuilder(
-                          builder: (context, constraints) {
-                            int crossAxisCount = 1;
-                            if (constraints.maxWidth > 900) {
-                              crossAxisCount = 3;
-                            } else if (constraints.maxWidth > 600) {
-                              crossAxisCount = 2;
-                            }
-
-                            return GridView.builder(
-                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: crossAxisCount,
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 16,
-                                childAspectRatio: 1.15,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Switch(
+                                value: item.isAvailable,
+                                activeColor: AppColors.primary,
+                                onChanged: (val) {
+                                  setState(() {
+                                    final idx = _menuItems.indexWhere((m) => m.id == item.id);
+                                    if (idx != -1) {
+                                      _menuItems[idx] = item.copyWith(isAvailable: val);
+                                    }
+                                  });
+                                },
                               ),
-                              itemCount: items.length,
-                              itemBuilder: (context, index) {
-                                final item = items[index];
-                                return _MenuItemCard(
-                                  item: item,
-                                  onEdit: () => _showAddEditItemDialog(item: item),
-                                  onDelete: () => _deleteMenuItem(item),
-                                  onToggleAvailable: (val) => _toggleAvailability(item, val),
-                                );
-                              },
-                            );
-                          },
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert_rounded),
+                                onSelected: (val) {
+                                  if (val == 'edit') {
+                                    _showAddEditDialog(context, item: item);
+                                  } else if (val == 'delete') {
+                                    _deleteItem(item);
+                                  }
+                                },
+                                itemBuilder: (ctx) => [
+                                  const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                                  const PopupMenuItem(value: 'delete', child: Text('Eliminar', style: TextStyle(color: Colors.red))),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteItem(MenuItemModel item) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar plato'),
+        content: Text('¿Deseas eliminar "${item.name}" del menú?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              setState(() => _menuItems.removeWhere((m) => m.id == item.id));
+              Navigator.pop(ctx);
+            },
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddEditDialog(BuildContext context, {MenuItemModel? item}) {
+    final nameCtrl = TextEditingController(text: item?.name ?? '');
+    final descCtrl = TextEditingController(text: item?.description ?? '');
+    final priceCtrl = TextEditingController(text: item != null ? item.price.toStringAsFixed(0) : '');
+    String cat = item?.category ?? 'Platos Fuertes';
+    XFile? pickedFile;
+    String? existingUrl = item?.imageUrl;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setStateModal) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx2).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item == null ? 'Nuevo Plato' : 'Editar Plato', style: AppTextStyles.headline),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: () async {
+                    final p = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
+                    if (p != null) setStateModal(() => pickedFile = p);
+                  },
+                  child: Container(
+                    height: 100,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.divider),
+                    ),
+                    child: pickedFile != null
+                        ? Image.network(pickedFile!.path, fit: BoxFit.cover)
+                        : (existingUrl != null && existingUrl.isNotEmpty
+                            ? Image.network(existingUrl, fit: BoxFit.cover)
+                            : const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.add_a_photo_outlined, color: AppColors.primary),
+                                  SizedBox(height: 4),
+                                  Text('Seleccionar imagen'),
+                                ],
+                              )),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nombre del plato')),
+                const SizedBox(height: 12),
+                TextField(controller: descCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'Descripción')),
+                const SizedBox(height: 12),
+                TextField(controller: priceCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Precio (\$)')),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: cat,
+                  items: _categories.where((c) => c != 'Todas').map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setStateModal(() => cat = val);
+                  },
+                  decoration: const InputDecoration(labelText: 'Categoría'),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                    onPressed: () async {
+                      if (nameCtrl.text.trim().isEmpty) return;
+                      final price = double.tryParse(priceCtrl.text.trim()) ?? 0;
+                      String? finalUrl = existingUrl;
+
+                      if (pickedFile != null) {
+                        final uploaded = await CloudinaryService.uploadImageXFile(pickedFile!);
+                        if (uploaded != null) finalUrl = uploaded;
+                      }
+
+                      final newItem = MenuItemModel(
+                        id: item?.id ?? 'm_${DateTime.now().millisecondsSinceEpoch}',
+                        restaurantId: _restaurant!.id,
+                        name: nameCtrl.text.trim(),
+                        description: descCtrl.text.trim(),
+                        price: price,
+                        category: cat,
+                        imageUrl: finalUrl,
+                        isAvailable: item?.isAvailable ?? true,
+                      );
+
+                      if (item == null) {
+                        setState(() => _menuItems.add(newItem));
+                      } else {
+                        setState(() {
+                          final idx = _menuItems.indexWhere((m) => m.id == item.id);
+                          if (idx != -1) _menuItems[idx] = newItem;
+                        });
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: Text(item == null ? 'Guardar Plato' : 'Actualizar', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
                 ),
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  void _toggleAvailability(MenuItemModel item, bool isAvailable) {
-    setState(() {
-      final index = _menuItems.indexWhere((i) => i.id == item.id);
-      if (index != -1) {
-        _menuItems[index] = MenuItemModel(
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          price: item.price,
-          category: item.category,
-          imageUrl: item.imageUrl,
-          isAvailable: isAvailable,
-        );
-      }
-    });
-  }
-
-  void _deleteMenuItem(MenuItemModel item) {
-    setState(() {
-      _menuItems.removeWhere((i) => i.id == item.id);
-    });
-  }
-
-  Future<void> _showAddEditItemDialog({MenuItemModel? item}) async {
-    final nameCtrl = TextEditingController(text: item?.name ?? '');
-    final descCtrl = TextEditingController(text: item?.description ?? '');
-    final priceCtrl = TextEditingController(text: item?.price.toString() ?? '');
-    String category = item?.category ?? 'Platos Fuertes';
-    XFile? pickedImage;
-    String? imageUrl = item?.imageUrl;
-    bool saving = false;
-
-    final picker = ImagePicker();
-
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return AlertDialog(
-              title: Text(item == null ? 'Nuevo Platillo' : 'Editar Platillo'),
-              content: SingleChildScrollView(
-                child: SizedBox(
-                  width: 480,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        onTap: () async {
-                          final file = await picker.pickImage(source: ImageSource.gallery);
-                          if (file != null) {
-                            setModalState(() => pickedImage = file);
-                          }
-                        },
-                        child: Container(
-                          height: 140,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.divider),
-                            image: pickedImage != null
-                                ? DecorationImage(image: NetworkImage(pickedImage!.path), fit: BoxFit.cover)
-                                : (imageUrl != null && imageUrl!.isNotEmpty
-                                    ? DecorationImage(image: NetworkImage(imageUrl!), fit: BoxFit.cover)
-                                    : null),
-                          ),
-                          child: (pickedImage == null && (imageUrl == null || imageUrl!.isEmpty))
-                              ? Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.add_a_photo_outlined, size: 36, color: AppColors.textSecondary),
-                                    const SizedBox(height: 6),
-                                    Text('Seleccionar foto del plato (Cloudinary)', style: AppTextStyles.caption),
-                                  ],
-                                )
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      TextField(
-                        controller: nameCtrl,
-                        decoration: const InputDecoration(labelText: 'Nombre del plato *'),
-                      ),
-                      const SizedBox(height: 12),
-
-                      TextField(
-                        controller: descCtrl,
-                        maxLines: 2,
-                        decoration: const InputDecoration(labelText: 'Descripción / Ingredientes'),
-                      ),
-                      const SizedBox(height: 12),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: priceCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: 'Precio (COP) *', prefixText: '\$ '),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: category,
-                              decoration: const InputDecoration(labelText: 'Categoría'),
-                              items: ['Entradas', 'Platos Fuertes', 'Postres', 'Bebidas']
-                                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                                  .toList(),
-                              onChanged: (v) {
-                                if (v != null) setModalState(() => category = v);
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: saving ? null : () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  onPressed: saving
-                      ? null
-                      : () async {
-                          if (nameCtrl.text.trim().isEmpty || priceCtrl.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Ingresa nombre y precio del plato')),
-                            );
-                            return;
-                          }
-
-                          setModalState(() => saving = true);
-
-                          try {
-                            if (pickedImage != null) {
-                              final uploadedUrl = await CloudinaryService.uploadImageXFile(pickedImage!);
-                              if (uploadedUrl != null) {
-                                imageUrl = uploadedUrl;
-                              }
-                            }
-
-                            final newItem = MenuItemModel(
-                              id: item?.id ?? 'm_${DateTime.now().millisecondsSinceEpoch}',
-                              name: nameCtrl.text.trim(),
-                              description: descCtrl.text.trim(),
-                              price: double.tryParse(priceCtrl.text.trim()) ?? 0.0,
-                              category: category,
-                              imageUrl: imageUrl,
-                              isAvailable: item?.isAvailable ?? true,
-                            );
-
-                            setState(() {
-                              if (item == null) {
-                                _menuItems.add(newItem);
-                              } else {
-                                final idx = _menuItems.indexWhere((i) => i.id == item.id);
-                                if (idx != -1) _menuItems[idx] = newItem;
-                              }
-                            });
-
-                            if (context.mounted) Navigator.pop(context);
-                          } catch (e) {
-                            setModalState(() => saving = false);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error al guardar: $e')),
-                              );
-                            }
-                          }
-                        },
-                  child: saving
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : Text(item == null ? 'Guardar' : 'Actualizar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _MenuItemCard extends StatelessWidget {
-  final MenuItemModel item;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final ValueChanged<bool> onToggleAvailable;
-
-  const _MenuItemCard({
-    required this.item,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onToggleAvailable,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: Container(
-              height: 110,
-              width: double.infinity,
-              color: Colors.grey.shade100,
-              child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                  ? Image.network(item.imageUrl!, fit: BoxFit.cover)
-                  : const Center(
-                      child: Icon(Icons.fastfood_rounded, size: 40, color: AppColors.textSecondary),
-                    ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.name,
-                        style: AppTextStyles.title.copyWith(fontSize: 16),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      '\$ ${item.price.toStringAsFixed(0)}',
-                      style: AppTextStyles.title.copyWith(color: AppColors.primary, fontSize: 15),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item.description.isNotEmpty ? item.description : 'Sin descripción',
-                  style: AppTextStyles.caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Chip(
-                      label: Text(item.category, style: const TextStyle(fontSize: 11)),
-                      backgroundColor: AppColors.background,
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    Row(
-                      children: [
-                        Switch(
-                          value: item.isAvailable,
-                          activeColor: AppColors.primary,
-                          onChanged: onToggleAvailable,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.textSecondary),
-                          onPressed: onEdit,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.error),
-                          onPressed: onDelete,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
