@@ -13,8 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,14 +44,16 @@ public class PostService {
     }
 
     @Transactional
-    public PostDTO createPost(PostDTO dto, String userId) {
-        if (userId == null || userId.isBlank()) {
+    public PostDTO createPost(PostDTO dto, String targetUserId) {
+        String finalUserId = (targetUserId != null && !targetUserId.isBlank()) ? targetUserId : dto.getUserId();
+        if (finalUserId == null || finalUserId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El ID de usuario es requerido");
         }
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        User user = userRepository.findById(finalUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado con ID: " + finalUserId));
         
         Post post = Post.builder()
+                .id(UUID.randomUUID().toString())
                 .user(user)
                 .restaurantName(dto.getRestaurantName() != null ? dto.getRestaurantName() : "Restaurante Bogotá")
                 .restaurantAddress(dto.getRestaurantAddress())
@@ -61,10 +65,12 @@ public class PostService {
                 .isPublic(true)
                 .likesCount(0)
                 .commentsCount(0)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
                 .build();
         
         post = postRepository.save(post);
-        return convertToDTO(post, userId);
+        return convertToDTO(post, finalUserId);
     }
 
     @Transactional
