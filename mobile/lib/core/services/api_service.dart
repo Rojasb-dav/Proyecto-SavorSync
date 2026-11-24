@@ -48,7 +48,7 @@ class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
 
-  static const String baseUrl = 'http://localhost:8080/api/v1';
+  static const String baseUrl = 'https://proyecto-savorsync.onrender.com/api/v1';
 
   late final Dio _dio;
   final TokenStorage _tokenStorage = TokenStorage();
