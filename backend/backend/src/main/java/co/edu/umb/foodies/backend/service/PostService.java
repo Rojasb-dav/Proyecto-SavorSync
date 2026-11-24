@@ -94,11 +94,14 @@ public class PostService {
             if (!post.getUser().getId().equals(userId)) {
                 try {
                     notificationRepository.save(Notification.builder()
+                            .id(UUID.randomUUID().toString())
                             .clienteId(post.getUser().getId())
                             .type(Notification.NotificationType.like)
                             .title("¡A alguien le gusta tu reseña! ❤️")
                             .body("@" + user.getUsername() + " le ha dado Me Gusta a tu reseña sobre " + post.getRestaurantName())
                             .read(false)
+                            .channel(Notification.Channel.in_app)
+                            .createdAt(LocalDateTime.now())
                             .build());
                 } catch (Exception e) {
                     System.err.println("WARN: Fallo al notificar Like: " + e.getMessage());

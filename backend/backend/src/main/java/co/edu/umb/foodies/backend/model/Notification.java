@@ -59,11 +59,13 @@ public class Notification {
     @JsonProperty("read")
     @JsonAlias({"leida", "read"})
     @Column(name = "leida", nullable = false)
-    private Boolean read;
+    @Builder.Default
+    private Boolean read = false;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "canal")
-    private Channel channel;
+    @Builder.Default
+    private Channel channel = Channel.in_app;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

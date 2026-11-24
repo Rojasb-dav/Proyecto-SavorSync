@@ -14,8 +14,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/posts")
@@ -73,10 +75,13 @@ public class PostController {
         String authorId = userId != null ? userId : (body.get("authorId") != null ? body.get("authorId").toString() : "anon");
 
         Comment comment = Comment.builder()
+                .id(UUID.randomUUID().toString())
                 .postId(postId)
                 .clienteId(authorId)
                 .content(content)
                 .status(Comment.CommentStatus.activo)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
                 .build();
 
         Comment savedComment = commentRepository.save(comment);
@@ -89,11 +94,14 @@ public class PostController {
                         commenterName = userRepository.findById(userId).map(u -> "@" + u.getUsername()).orElse("Un usuario");
                     }
                     notificationRepository.save(Notification.builder()
+                            .id(UUID.randomUUID().toString())
                             .clienteId(post.getUser().getId())
                             .type(Notification.NotificationType.comentario)
                             .title("Nuevo comentario en tu reseña 💬")
                             .body(commenterName + " comentó: \"" + savedComment.getContent() + "\"")
                             .read(false)
+                            .channel(Notification.Channel.in_app)
+                            .createdAt(LocalDateTime.now())
                             .build());
                 }
             });
