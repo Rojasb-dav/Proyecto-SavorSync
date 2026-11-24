@@ -33,6 +33,9 @@ public class ReservationController {
 
     @PostMapping
     public ResponseEntity<Reservation> createReservation(@RequestBody Reservation reservation) {
+        if (reservation.getEstado() == null) {
+            reservation.setEstado(Reservation.ReservationStatus.pendiente);
+        }
         return ResponseEntity.ok(reservationRepository.save(reservation));
     }
 
@@ -40,16 +43,31 @@ public class ReservationController {
     @PutMapping("/{id}")
     public ResponseEntity<Reservation> updateStatus(@PathVariable String id, @RequestBody Map<String, Object> body) {
         return reservationRepository.findById(id).map(r -> {
-            String statusStr = body.get("estado") != null ? body.get("estado").toString() : null;
-            if (statusStr == null && body.get("status") != null) {
-                statusStr = body.get("status").toString();
+            String raw = body.get("estado") != null ? body.get("estado").toString() : null;
+            if (raw == null && body.get("status") != null) {
+                raw = body.get("status").toString();
             }
-            if (statusStr != null) {
-                try {
-                    r.setEstado(Reservation.ReservationStatus.valueOf(statusStr.trim().toLowerCase()));
-                } catch (Exception ignored) {}
+
+            Reservation.ReservationStatus parsed = parseStatus(raw);
+            if (parsed != null) {
+                r.setEstado(parsed);
             }
+            if (r.getEstado() == null) {
+                r.setEstado(Reservation.ReservationStatus.pendiente);
+            }
+
             return ResponseEntity.ok(reservationRepository.save(r));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private Reservation.ReservationStatus parseStatus(String input) {
+        if (input == null || input.isBlank()) return null;
+        String clean = input.trim().toLowerCase();
+        for (Reservation.ReservationStatus status : Reservation.ReservationStatus.values()) {
+            if (status.name().equalsIgnoreCase(clean)) {
+                return status;
+            }
+        }
+        return null;
     }
 }

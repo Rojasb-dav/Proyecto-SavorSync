@@ -160,7 +160,7 @@ class ApiService {
 
   Future<void> updateRestaurantStatus(String id, String status) async {
     try {
-      await _dio.put('/restaurants/$id/status', data: {'status': status});
+      await _dio.put('/restaurants/$id/status', data: {'status': status, 'estado': status});
     } catch (_) {}
   }
 
@@ -244,7 +244,11 @@ class ApiService {
 
   Future<void> updateReservationStatus(String reservationId, String status) async {
     try {
-      await _dio.put('/reservations/$reservationId', data: {'status': status});
+      final cleanStatus = status.trim().toLowerCase();
+      await _dio.put('/reservations/$reservationId', data: {
+        'status': cleanStatus,
+        'estado': cleanStatus,
+      });
     } catch (_) {}
   }
 
@@ -275,7 +279,7 @@ class ApiService {
 
   Future<void> updatePQRSStatus(String id, String status) async {
     try {
-      await _dio.put('/pqrs/$id', data: {'status': status});
+      await _dio.put('/pqrs/$id', data: {'status': status, 'estado': status});
     } catch (_) {}
   }
 
