@@ -50,13 +50,20 @@ class _CreateReservationModalState extends State<CreateReservationModal> {
       final res = await _apiService.createReservation({
         'restaurantId': widget.restaurant.id,
         'restaurantName': widget.restaurant.name,
+        'clienteId': user.id,
         'userId': user.id,
         'userName': clienteNombre,
+        'clienteNombre': clienteNombre,
         'userPhone': user.phone ?? '+57 300 000 0000',
+        'numPersonas': _numPersonas,
         'guests': _numPersonas,
+        'fechaReserva': fechaStr,
         'date': fechaStr,
+        'horaReserva': horaStr,
         'time': horaStr,
+        'notas': _notasCtrl.text.trim(),
         'specialNotes': _notasCtrl.text.trim(),
+        'estado': 'pendiente',
       });
 
       if (widget.restaurant.ownerId.isNotEmpty) {

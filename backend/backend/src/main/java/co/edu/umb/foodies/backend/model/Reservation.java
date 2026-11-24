@@ -1,5 +1,7 @@
 package co.edu.umb.foodies.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -25,18 +27,28 @@ public class Reservation {
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
+    @JsonProperty("restaurantId")
+    @JsonAlias({"restaurante_id", "restaurant_id", "restaurantId"})
     @Column(name = "restaurante_id", length = 36, nullable = false)
     private String restaurantId;
 
+    @JsonProperty("clienteId")
+    @JsonAlias({"userId", "cliente_id", "user_id", "clienteId"})
     @Column(name = "cliente_id", length = 36, nullable = false)
     private String clienteId;
 
+    @JsonProperty("numPersonas")
+    @JsonAlias({"guests", "num_personas", "numPersonas"})
     @Column(name = "num_personas", nullable = false)
     private Integer numPersonas;
 
+    @JsonProperty("fechaReserva")
+    @JsonAlias({"date", "fecha_reserva", "fechaReserva"})
     @Column(name = "fecha_reserva", nullable = false)
     private LocalDate fechaReserva;
 
+    @JsonProperty("horaReserva")
+    @JsonAlias({"time", "hora_reserva", "horaReserva"})
     @Column(name = "hora_reserva", nullable = false)
     private LocalTime horaReserva;
 
@@ -44,6 +56,8 @@ public class Reservation {
     @Column(name = "estado", nullable = false)
     private ReservationStatus estado;
 
+    @JsonProperty("notas")
+    @JsonAlias({"specialNotes", "special_notes", "notas"})
     @Column(name = "notas", columnDefinition = "TEXT")
     private String notas;
 
