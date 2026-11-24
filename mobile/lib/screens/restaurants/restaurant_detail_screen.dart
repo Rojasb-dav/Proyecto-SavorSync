@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
+import '../../core/utils/token_storage.dart';
 import '../../models/menu_item_model.dart';
 import '../../models/post_model.dart';
 import '../../models/restaurant_model.dart';
@@ -29,6 +30,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
   List<MenuItemModel> _menuItems = [];
   bool _loadingPosts = true;
   final ApiService _apiService = ApiService();
+  final TokenStorage _tokenStorage = TokenStorage();
   late TabController _tabController;
 
   final _currencyFormat = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
@@ -37,6 +39,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _checkFavoriteStatus();
     _loadData();
   }
 
@@ -44,6 +47,28 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkFavoriteStatus() async {
+    final isFav = await _tokenStorage.isRestaurantFavorite(widget.restaurant.id);
+    if (mounted) {
+      setState(() => _isFavorite = isFav);
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final newFavStatus = await _tokenStorage.toggleFavoriteRestaurant(widget.restaurant.id);
+    if (mounted) {
+      setState(() => _isFavorite = newFavStatus);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newFavStatus
+              ? '¡${widget.restaurant.name} añadido a tus favoritos! ❤️'
+              : 'Removido de tus favoritos'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _loadData() async {
@@ -64,10 +89,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
       if (!mounted) return;
       setState(() => _loadingPosts = false);
     }
-  }
-
-  void _toggleFavorite() {
-    setState(() => _isFavorite = !_isFavorite);
   }
 
   Future<void> _showReportRestaurantModal() async {
