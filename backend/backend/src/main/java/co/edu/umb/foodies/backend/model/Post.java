@@ -41,13 +41,16 @@ public class Post {
     private String imageUrl;
 
     @Column(name = "conteo_likes")
-    private Integer likesCount;
+    @Builder.Default
+    private Integer likesCount = 0;
 
     @Column(name = "conteo_comentarios")
-    private Integer commentsCount;
+    @Builder.Default
+    private Integer commentsCount = 0;
 
     @Column(name = "es_publica")
-    private Boolean isPublic;
+    @Builder.Default
+    private Boolean isPublic = true;
 
     public enum PostStatus {
         borrador, publicada, oculta, en_revision
@@ -55,7 +58,8 @@ public class Post {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "estado")
-    private PostStatus status;
+    @Builder.Default
+    private PostStatus status = PostStatus.publicada;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
