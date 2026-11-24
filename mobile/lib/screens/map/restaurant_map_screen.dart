@@ -24,6 +24,7 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
   Position? _currentPosition;
   static const LatLng _bogotaCenter = LatLng(4.6533, -74.0621);
   final ApiService _apiService = ApiService();
+  final MapController _mapController = MapController();
 
   @override
   void initState() {
@@ -46,9 +47,19 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
       final pos = await Geolocator.getCurrentPosition();
       if (mounted) {
         setState(() => _currentPosition = pos);
+        final userLatLng = LatLng(pos.latitude, pos.longitude);
+        _mapController.move(userLatLng, 14.5);
       }
     } catch (e) {
       debugPrint('Error obteniendo ubicación GPS: $e');
+    }
+  }
+
+  void _centerOnUser() {
+    if (_currentPosition != null) {
+      _mapController.move(LatLng(_currentPosition!.latitude, _currentPosition!.longitude), 15.0);
+    } else {
+      _initUserLocation();
     }
   }
 
@@ -156,9 +167,10 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
           return Stack(
             children: [
               FlutterMap(
+                mapController: _mapController,
                 options: MapOptions(
                   initialCenter: userLatLng,
-                  initialZoom: 13.5,
+                  initialZoom: 14.0,
                   onTap: (_, __) {
                     setState(() => _selectedRestaurant = null);
                   },
@@ -181,6 +193,8 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
                   MarkerLayer(markers: allMarkers),
                 ],
               ),
+
+              // Barra superior
               SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -201,27 +215,25 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
                       children: [
                         const Icon(Icons.map_rounded, color: AppColors.primary),
                         const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Mapa Interactivo de Bogotá (GPS Real)',
-                            style: AppTextStyles.title.copyWith(fontSize: 15),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.gps_fixed_rounded, size: 12, color: Colors.blue),
-                              const SizedBox(width: 4),
-                              Text(
-                                _currentPosition != null ? 'GPS Activo' : 'Bogotá',
-                                style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11),
-                              ),
-                            ],
+                        Expanded(child: Text('Mapa Interactivo SavorSync', style: AppTextStyles.title.copyWith(fontSize: 15))),
+                        GestureDetector(
+                          onTap: _centerOnUser,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.gps_fixed_rounded, size: 14, color: Colors.blue),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _currentPosition != null ? 'Mi Ubicación GPS 📍' : 'Obteniendo GPS...',
+                                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -229,6 +241,21 @@ class _RestaurantMapScreenState extends State<RestaurantMapScreen> {
                   ),
                 ),
               ),
+
+              // Botón Flotante para Centrar GPS
+              Positioned(
+                right: 20,
+                bottom: _selectedRestaurant != null ? 180 : 30,
+                child: FloatingActionButton(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.blue,
+                  elevation: 6,
+                  onPressed: _centerOnUser,
+                  child: const Icon(Icons.my_location_rounded, size: 28),
+                ),
+              ),
+
+              // Ficha inferior
               if (_selectedRestaurant != null)
                 Positioned(
                   left: 16,

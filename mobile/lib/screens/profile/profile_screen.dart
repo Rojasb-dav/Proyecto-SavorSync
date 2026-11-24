@@ -58,18 +58,40 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     if (targetId == null) return;
 
     try {
-      final userObj = await _apiService.dio.get('/api/users/$targetId');
+      final userObj = await _apiService.dio.get('/users/$targetId');
       final fetchedUser = UserModel.fromJson(Map<String, dynamic>.from(userObj.data));
       final postsList = await _apiService.getUserPosts(targetId);
       final resList = await _apiService.getReservations(userId: targetId);
-      final favList = await _apiService.getRestaurants();
+      final allRestaurants = await _apiService.getRestaurants();
+
+      final restMap = {for (var r in allRestaurants) r.id: r.name};
+
+      final enrichedReservations = resList.map((r) {
+        final realName = restMap[r.restaurantId] ??
+            (r.restaurantName.isNotEmpty && r.restaurantName != 'Restaurante'
+                ? r.restaurantName
+                : 'Restaurante Bogotá');
+        return ReservationModel(
+          id: r.id,
+          restaurantId: r.restaurantId,
+          restaurantName: realName,
+          clienteId: r.clienteId,
+          clienteNombre: r.clienteNombre,
+          numPersonas: r.numPersonas,
+          fechaReserva: r.fechaReserva,
+          horaReserva: r.horaReserva,
+          notas: r.notas,
+          estado: r.estado,
+          createdAt: r.createdAt,
+        );
+      }).toList();
 
       if (!mounted) return;
       setState(() {
         _user = fetchedUser;
         _posts = postsList;
-        _reservations = resList;
-        _favorites = favList.take(2).toList();
+        _reservations = enrichedReservations;
+        _favorites = allRestaurants.take(3).toList();
         _isFollowing = fetchedUser.isFollowing ?? false;
         _loading = false;
       });
@@ -94,9 +116,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
     try {
       if (newFollowing) {
-        await _apiService.dio.post('/api/follows/$targetId');
+        await _apiService.dio.post('/follows/$targetId');
       } else {
-        await _apiService.dio.delete('/api/follows/$targetId');
+        await _apiService.dio.delete('/follows/$targetId');
       }
     } catch (_) {}
   }
