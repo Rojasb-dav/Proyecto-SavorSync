@@ -8,8 +8,10 @@ import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.PostRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashSet;
 import java.util.List;
@@ -33,7 +35,7 @@ public class PostService {
     @Transactional(readOnly = true)
     public List<PostDTO> getUserPosts(String userId, String currentUserId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         return postRepository.findByUserOrderByCreatedAtDesc(user).stream()
                 .map(post -> convertToDTO(post, currentUserId))
                 .collect(Collectors.toList());
@@ -41,17 +43,24 @@ public class PostService {
 
     @Transactional
     public PostDTO createPost(PostDTO dto, String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El ID de usuario es requerido");
+        }
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         
         Post post = Post.builder()
                 .user(user)
-                .restaurantName(dto.getRestaurantName())
+                .restaurantName(dto.getRestaurantName() != null ? dto.getRestaurantName() : "Restaurante Bogotá")
                 .restaurantAddress(dto.getRestaurantAddress())
-                .contenido(dto.getContent())
-                .rating(dto.getRating())
+                .contenido(dto.getContent() != null ? dto.getContent() : "Reseña gastronómica")
+                .rating(dto.getRating() != null ? dto.getRating() : 5.0)
                 .imageUrl(dto.getImageUrl())
                 .likedBy(new HashSet<>())
+                .status(Post.PostStatus.publicada)
+                .isPublic(true)
+                .likesCount(0)
+                .commentsCount(0)
                 .build();
         
         post = postRepository.save(post);
@@ -62,9 +71,9 @@ public class PostService {
     public void toggleLike(String postId, String userId) {
         if (userId == null) return;
         Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new RuntimeException("Publicación no encontrada"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
         if (post.getLikedBy() == null) {
             post.setLikedBy(new HashSet<>());
@@ -96,10 +105,10 @@ public class PostService {
     @Transactional
     public void deletePost(String postId, String userId) {
         Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new RuntimeException("Publicación no encontrada"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
         
         if (!post.getUser().getId().equals(userId)) {
-            throw new RuntimeException("No tienes permiso para eliminar esta publicación");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes permiso para eliminar esta publicación");
         }
         postRepository.delete(post);
     }
