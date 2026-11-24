@@ -70,6 +70,113 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
     setState(() => _isFavorite = !_isFavorite);
   }
 
+  Future<void> _showReportRestaurantModal() async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Inicia sesión para enviar un reporte')),
+      );
+      return;
+    }
+
+    final formKey = GlobalKey<FormState>();
+    final descCtrl = TextEditingController();
+    String selectedMotivo = 'Información Inexacta o Incompleta';
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.report_problem_rounded, color: Colors.red, size: 26),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Reportar Restaurante', style: AppTextStyles.title)),
+            ],
+          ),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Indica la razón de tu reporte sobre ${widget.restaurant.name}:', style: AppTextStyles.caption),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedMotivo,
+                    decoration: const InputDecoration(labelText: 'Motivo del reporte *'),
+                    items: const [
+                      DropdownMenuItem(value: 'Información Inexacta o Incompleta', child: Text('Información Inexacta o Incompleta')),
+                      DropdownMenuItem(value: 'Establecimiento Inexistente / Cerrado', child: Text('Establecimiento Inexistente / Cerrado')),
+                      DropdownMenuItem(value: 'Mal Servicio o Problemas de Higiene', child: Text('Mal Servicio o Problemas de Higiene')),
+                      DropdownMenuItem(value: 'Precios Incorrectos en el Menú', child: Text('Precios Incorrectos en el Menú')),
+                      DropdownMenuItem(value: 'Contenido / Fotos Inapropiadas', child: Text('Contenido / Fotos Inapropiadas')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDlgState(() => selectedMotivo = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: descCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Detalles del reporte (Opcional)',
+                      hintText: 'Describe brevemente lo sucedido para que el equipo de moderación pueda investigarlo...',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancelar')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setDlgState(() => isSaving = true);
+                      try {
+                        await _apiService.createPQRS({
+                          'clienteId': user.id,
+                          'tipo': 'queja',
+                          'asunto': 'Reporte de Restaurante: ${widget.restaurant.name}',
+                          'descripcion': 'Motivo: $selectedMotivo. Detalle: ${descCtrl.text.trim()}',
+                          'estado': 'recibida',
+                        });
+
+                        if (!mounted) return;
+                        Navigator.pop(dialogCtx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Reporte enviado con éxito al equipo de moderación. ¡Gracias por tu colaboración!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      } catch (e) {
+                        setDlgState(() => isSaving = false);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error al enviar reporte: $e')),
+                        );
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Enviar Reporte 🚩', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = widget.restaurant;
@@ -112,6 +219,11 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> with Si
                   color: _isFavorite ? AppColors.primary : Colors.white,
                 ),
                 onPressed: _toggleFavorite,
+              ),
+              IconButton(
+                icon: const Icon(Icons.flag_rounded, color: Colors.white),
+                tooltip: 'Reportar Restaurante 🚩',
+                onPressed: _showReportRestaurantModal,
               ),
             ],
           ),
