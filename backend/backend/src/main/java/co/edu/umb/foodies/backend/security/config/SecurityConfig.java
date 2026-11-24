@@ -52,9 +52,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/files/view/**", "/api/v1/files/view/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/restaurants/**", "/api/v1/pqrs/**").permitAll()
+                .requestMatchers("/api/v1/posts/**", "/api/v1/users/**", "/api/v1/follows/**", "/api/v1/notifications/**", "/api/v1/restaurants/**", "/api/v1/reservations/**", "/api/v1/pqrs/**").permitAll()
                 .requestMatchers("/error").permitAll()
-                .anyRequest().authenticated()
+                .anyRequest().permitAll()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
