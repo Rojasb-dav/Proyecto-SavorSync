@@ -12,6 +12,7 @@ import '../admin/pqrs_management_screen.dart';
 import '../admin/restaurant_admin_dashboard.dart';
 import '../admin/restaurant_approvals_screen.dart';
 import '../admin/restaurant_reservations_screen.dart';
+import '../admin/user_governance_screen.dart';
 import '../auth/login_screen.dart';
 import '../home/home_screen.dart';
 import '../profile/profile_screen.dart';
@@ -93,11 +94,12 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
       );
     }
 
-    // 3. Moderador o Admin del Sistema -> Panel Web de Moderación
+    // 3. Moderador o Admin del Sistema -> Panel Web de Moderación y Gobierno
     if (role == 'moderador' || role == 'admin_sistema') {
       final pages = const [
         ModerationScreen(),
         RestaurantApprovalsScreen(),
+        UserGovernanceScreen(),
         PqrsManagementScreen(),
         ProfileScreen(),
       ];
@@ -116,6 +118,10 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
           NavigationRailDestination(
             icon: Icon(Icons.verified_rounded),
             label: Text('Aprobar Locales'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.people_alt_rounded),
+            label: Text('Gestión Usuarios'),
           ),
           NavigationRailDestination(
             icon: Icon(Icons.support_agent_rounded),
