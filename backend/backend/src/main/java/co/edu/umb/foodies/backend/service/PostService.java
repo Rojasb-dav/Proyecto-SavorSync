@@ -1,8 +1,10 @@
 package co.edu.umb.foodies.backend.service;
 
 import co.edu.umb.foodies.backend.dto.PostDTO;
+import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.Post;
 import co.edu.umb.foodies.backend.model.User;
+import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.PostRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
 
     @Transactional(readOnly = true)
     public List<PostDTO> getAllPosts(String currentUserId) {
@@ -51,6 +54,37 @@ public class PostService {
         
         post = postRepository.save(post);
         return convertToDTO(post, userId);
+    }
+
+    @Transactional
+    public void toggleLike(String postId, String userId) {
+        if (userId == null) return;
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new RuntimeException("Publicación no encontrada"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+
+        if (post.getLikedBy().contains(user)) {
+            post.getLikedBy().remove(user);
+        } else {
+            post.getLikedBy().add(user);
+
+            // Enviar notificacion automatica al autor de la reseña
+            if (!post.getUser().getId().equals(userId)) {
+                try {
+                    notificationRepository.save(Notification.builder()
+                            .clienteId(post.getUser().getId())
+                            .type(Notification.NotificationType.like)
+                            .title("¡A alguien le gusta tu reseña! ❤️")
+                            .body("@" + user.getUsername() + " le ha dado Me Gusta a tu reseña sobre " + post.getRestaurantName())
+                            .read(false)
+                            .build());
+                } catch (Exception e) {
+                    System.err.println("WARN: Fallo al notificar Like: " + e.getMessage());
+                }
+            }
+        }
+        postRepository.save(post);
     }
 
     @Transactional
