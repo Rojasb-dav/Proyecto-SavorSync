@@ -25,9 +25,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _phoneController;
 
   XFile? _avatarFile;
-  XFile? _bannerFile;
   String? _avatarUrl;
-  String? _bannerUrl;
   bool _loading = false;
 
   final _picker = ImagePicker();
@@ -50,13 +48,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<void> _pickBanner() async {
-    final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (picked != null) {
-      setState(() => _bannerFile = picked);
-    }
-  }
-
   Future<void> _linkGoogleAccount() async {
     try {
       final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
@@ -71,27 +62,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       final updateData = {
         'emailVerified': true,
-        if (googlePhoto != null && googlePhoto.isNotEmpty && (_avatarUrl == null || _avatarUrl!.isEmpty))
+        if (googlePhoto != null && googlePhoto.isNotEmpty)
           'avatarUrl': googlePhoto,
       };
 
-      try {
-        await _apiService.dio.put('/users/${user.id}', data: updateData);
-      } catch (_) {}
+      final response = await _apiService.dio.put('/users/${user.id}', data: updateData);
 
       if (!mounted) return;
 
-      context.read<AuthProvider>().updateUser({
-        'id': user.id,
-        'email': user.email,
-        'username': user.username,
-        'fullName': user.fullName,
-        'bio': user.bio,
-        'phone': user.phone,
-        'avatarUrl': googlePhoto ?? user.avatarUrl,
-        'role': user.role,
-        'emailVerified': true,
-      });
+      if (response.data != null) {
+        context.read<AuthProvider>().updateUser(Map<String, dynamic>.from(response.data));
+      }
 
       showDialog(
         context: context,
@@ -154,40 +135,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _loading = true);
     try {
       String? finalAvatarUrl = _avatarUrl;
-      String? finalBannerUrl = _bannerUrl;
 
       if (_avatarFile != null) {
         final uploaded = await CloudinaryService.uploadImageXFile(_avatarFile!);
         if (uploaded != null) finalAvatarUrl = uploaded;
       }
 
-      if (_bannerFile != null) {
-        final uploaded = await CloudinaryService.uploadImageXFile(_bannerFile!);
-        if (uploaded != null) finalBannerUrl = uploaded;
-      }
-
       final updateData = {
         'bio': _bioController.text.trim(),
         'phone': _phoneController.text.trim(),
         'avatarUrl': finalAvatarUrl,
-        'bannerUrl': finalBannerUrl,
       };
 
-      try {
-        await _apiService.dio.put('/users/${user.id}', data: updateData);
-      } catch (_) {}
+      final response = await _apiService.dio.put('/users/${user.id}', data: updateData);
 
       if (!mounted) return;
-      context.read<AuthProvider>().updateUser({
-        'id': user.id,
-        'email': user.email,
-        'username': user.username,
-        'fullName': user.fullName,
-        'bio': _bioController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'avatarUrl': finalAvatarUrl,
-        'role': user.role,
-      });
+      if (response.data != null) {
+        context.read<AuthProvider>().updateUser(Map<String, dynamic>.from(response.data));
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Perfil actualizado correctamente'), backgroundColor: Colors.green),
@@ -233,37 +198,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Foto de Portada / Banner (Cloudinary)', style: AppTextStyles.title),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: _pickBanner,
-                child: Container(
-                  height: 120,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.divider),
-                    image: _bannerFile != null
-                        ? DecorationImage(image: NetworkImage(_bannerFile!.path), fit: BoxFit.cover)
-                        : (_bannerUrl != null && _bannerUrl!.isNotEmpty
-                            ? DecorationImage(image: NetworkImage(_bannerUrl!), fit: BoxFit.cover)
-                            : null),
-                  ),
-                  child: (_bannerFile == null && (_bannerUrl == null || _bannerUrl!.isEmpty))
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.add_photo_alternate_outlined, size: 36, color: AppColors.primary),
-                            const SizedBox(height: 4),
-                            Text('Toca para elegir banner de portada', style: AppTextStyles.caption),
-                          ],
-                        )
-                      : null,
-                ),
-              ),
-              const SizedBox(height: 24),
-
               Center(
                 child: GestureDetector(
                   onTap: _pickAvatar,
@@ -358,7 +292,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 12),
                 Text('Enlazar Cuenta de Google 🔗', style: AppTextStyles.title),
                 const SizedBox(height: 6),
-                Text('Vincula tu perfil de SavorSync a tu cuenta de Google para iniciar sesión con un solo clic.', style: AppTextStyles.subtle),
+                Text('Vincula tu perfil de SavorSync a tu cuenta de Google para iniciar sesión con un solo clic y sincronizar tu foto de perfil.', style: AppTextStyles.subtle),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(

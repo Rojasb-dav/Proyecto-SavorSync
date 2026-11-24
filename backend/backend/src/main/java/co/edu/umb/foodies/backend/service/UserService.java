@@ -53,6 +53,9 @@ public class UserService {
         if (req.getFullName() != null) user.setFullName(req.getFullName());
         if (req.getBio() != null) user.setBio(req.getBio());
         if (req.getPhone() != null) user.setPhone(req.getPhone());
+        if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()) user.setAvatarUrl(req.getAvatarUrl());
+        if (req.getEmailVerified() != null) user.setEmailVerified(req.getEmailVerified());
+
         if (req.getUsername() != null && !req.getUsername().equals(user.getUsername())) {
             if (userRepository.existsByUsername(req.getUsername())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");

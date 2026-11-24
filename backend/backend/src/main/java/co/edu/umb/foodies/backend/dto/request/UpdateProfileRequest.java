@@ -17,4 +17,9 @@ public class UpdateProfileRequest {
 
     @Size(max = 60)
     private String username;
+
+    @Size(max = 500)
+    private String avatarUrl;
+
+    private Boolean emailVerified;
 }
