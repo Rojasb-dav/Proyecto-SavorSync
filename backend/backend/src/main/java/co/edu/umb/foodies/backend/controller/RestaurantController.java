@@ -7,6 +7,7 @@ import co.edu.umb.foodies.backend.repository.RestaurantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.util.List;
 
@@ -41,6 +42,12 @@ public class RestaurantController {
             r.setStatus(body.getStatus());
             return ResponseEntity.ok(restaurantRepository.save(r));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteRestaurant(@PathVariable String id) {
+        restaurantRepository.deleteById(id);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/menu")
