@@ -30,8 +30,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
+        ex.printStackTrace();
+        String detail = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(body(500, ex.getMessage()));
+                .body(body(500, ex.getClass().getName() + ": " + detail));
     }
 
     private Map<String, Object> body(int status, String message) {
