@@ -25,6 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -120,48 +121,55 @@ public class AuthService {
                     .expiresAt(LocalDateTime.now().plusHours(24))
                     .build());
 
-            try {
-                MimeMessage mimeMessage = mailSender.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-                helper.setFrom("SavorSync <" + senderEmail + ">");
-                helper.setTo(email);
-                helper.setSubject("🔑 Código de Recuperación de Contraseña - SavorSync");
+            // Enviar correo asincrónicamente en segundo plano
+            CompletableFuture.runAsync(() -> {
+                try {
+                    MimeMessage mimeMessage = mailSender.createMimeMessage();
+                    MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+                    helper.setFrom("SavorSync <" + senderEmail + ">");
+                    helper.setTo(email);
+                    helper.setSubject("🔑 Código de Recuperación de Contraseña - SavorSync");
 
-                String htmlBody = "<html>" +
-                    "<body style='font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px; color: #333;'>" +
-                    "<div style='max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);'>" +
-                    "<div style='background-color: #E65100; padding: 24px; text-align: center; color: #ffffff;'>" +
-                    "<h1 style='margin: 0; font-size: 24px; font-weight: bold;'>🥑 SavorSync</h1>" +
-                    "<p style='margin: 4px 0 0 0; font-size: 14px; opacity: 0.9;'>Red Social Gastronómica de Bogotá</p>" +
-                    "</div>" +
-                    "<div style='padding: 30px;'>" +
-                    "<h2 style='color: #222; margin-top: 0;'>Restablece tu contraseña</h2>" +
-                    "<p>Hola <strong>" + user.getFullName() + "</strong> 👋,</p>" +
-                    "<p>Hemos recibido una solicitud para restablecer la contraseña asociada a tu cuenta en <strong>SavorSync</strong>.</p>" +
-                    "<p>Usa el siguiente código de verificación de 6 dígitos en la aplicación:</p>" +
-                    "<div style='background-color: #FFF3E0; border: 2px dashed #E65100; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;'>" +
-                    "<span style='font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #E65100; font-family: monospace;'>" + code + "</span>" +
-                    "</div>" +
-                    "<p style='font-size: 13px; color: #666;'>⏰ Este código de verificación es válido durante <strong>15 minutos</strong>.</p>" +
-                    "<p style='font-size: 13px; color: #666;'>🔒 Si no solicitaste este cambio, puedes ignorar este correo de forma segura. Tu contraseña permanecerá intacta.</p>" +
-                    "<hr style='border: none; border-top: 1px solid #eee; margin: 24px 0;' />" +
-                    "<p style='margin: 0; font-size: 12px; color: #888; text-align: center;'>SavorSync Bogotá • Tu experiencia gastronómica conectada</p>" +
-                    "</div>" +
-                    "</div>" +
-                    "</body>" +
-                    "</html>";
+                    String htmlBody = "<html>" +
+                        "<body style='font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px; color: #333;'>" +
+                        "<div style='max-width: 550px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);'>" +
+                        "<div style='background-color: #E65100; padding: 24px; text-align: center; color: #ffffff;'>" +
+                        "<h1 style='margin: 0; font-size: 24px; font-weight: bold;'>🥑 SavorSync</h1>" +
+                        "<p style='margin: 4px 0 0 0; font-size: 14px; opacity: 0.9;'>Red Social Gastronómica de Bogotá</p>" +
+                        "</div>" +
+                        "<div style='padding: 30px;'>" +
+                        "<h2 style='color: #222; margin-top: 0;'>Restablece tu contraseña</h2>" +
+                        "<p>Hola <strong>" + user.getFullName() + "</strong> 👋,</p>" +
+                        "<p>Hemos recibido una solicitud para restablecer la contraseña asociada a tu cuenta en <strong>SavorSync</strong>.</p>" +
+                        "<p>Usa el siguiente código de verificación de 6 dígitos en la aplicación:</p>" +
+                        "<div style='background-color: #FFF3E0; border: 2px dashed #E65100; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;'>" +
+                        "<span style='font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #E65100; font-family: monospace;'>" + code + "</span>" +
+                        "</div>" +
+                        "<p style='font-size: 13px; color: #666;'>⏰ Este código de verificación es válido durante <strong>15 minutos</strong>.</p>" +
+                        "<p style='font-size: 13px; color: #666;'>🔒 Si no solicitaste este cambio, puedes ignorar este correo de forma segura. Tu contraseña permanecerá intacta.</p>" +
+                        "<hr style='border: none; border-top: 1px solid #eee; margin: 24px 0;' />" +
+                        "<p style='margin: 0; font-size: 12px; color: #888; text-align: center;'>SavorSync Bogotá • Tu experiencia gastronómica conectada</p>" +
+                        "</div>" +
+                        "</div>" +
+                        "</body>" +
+                        "</html>";
 
-                helper.setText(htmlBody, true);
-                mailSender.send(mimeMessage);
-            } catch (Exception e) {
-                System.err.println("WARN: Fallo al enviar correo HTML con MimeMessage, usando texto plano de respaldo: " + e.getMessage());
-                SimpleMailMessage fallbackMsg = new SimpleMailMessage();
-                fallbackMsg.setFrom("SavorSync <" + senderEmail + ">");
-                fallbackMsg.setTo(email);
-                fallbackMsg.setSubject("Código de Recuperación - SavorSync");
-                fallbackMsg.setText("Hola " + user.getFullName() + ",\n\nTu código de recuperación es: " + code + "\n\nAtentamente,\nEl equipo de SavorSync.");
-                mailSender.send(fallbackMsg);
-            }
+                    helper.setText(htmlBody, true);
+                    mailSender.send(mimeMessage);
+                } catch (Exception e) {
+                    System.err.println("WARN: Fallo al enviar correo HTML con MimeMessage: " + e.getMessage());
+                    try {
+                        SimpleMailMessage fallbackMsg = new SimpleMailMessage();
+                        fallbackMsg.setFrom("SavorSync <" + senderEmail + ">");
+                        fallbackMsg.setTo(email);
+                        fallbackMsg.setSubject("Código de Recuperación - SavorSync");
+                        fallbackMsg.setText("Hola " + user.getFullName() + ",\n\nTu código de recuperación es: " + code + "\n\nAtentamente,\nEl equipo de SavorSync.");
+                        mailSender.send(fallbackMsg);
+                    } catch (Exception ex) {
+                        System.err.println("ERROR al enviar correo de recuperacion: " + ex.getMessage());
+                    }
+                }
+            });
         });
     }
 
