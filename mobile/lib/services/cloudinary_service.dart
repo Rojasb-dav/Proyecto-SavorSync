@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+
+import '../core/services/api_service.dart';
 
 class CloudinaryService {
   static const String cloudName = 'jflzrtvk';
@@ -21,17 +24,27 @@ class CloudinaryService {
         final responseData = await response.stream.bytesToString();
         final json = jsonDecode(responseData) as Map<String, dynamic>;
         return json['secure_url'] as String?;
-      } else {
-        debugPrint('Error en respuesta de Cloudinary: ${response.statusCode}');
-        return null;
       }
     } catch (e) {
-      debugPrint('Excepción al subir imagen a Cloudinary: $e');
+      debugPrint('WARN: Reintentando subida de imagen via Backend REST: $e');
+    }
+
+    // Respaldo seguro a traves del Backend Spring Boot /api/v1/files/upload
+    try {
+      final apiService = ApiService();
+      final bytes = await xfile.readAsBytes();
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: xfile.name),
+      });
+      final res = await apiService.dio.post('/files/upload', data: formData);
+      return res.data['url'] as String?;
+    } catch (e) {
+      debugPrint('ERROR al subir imagen a Cloudinary y Backend: $e');
       return null;
     }
   }
 
-  /// Subir múltiples imágenes XFile (compatible con Web y Móvil)
+  /// Subir múltiples imágenes XFile
   static Future<List<String>> uploadMultipleXFiles(List<XFile> xfiles) async {
     final List<String> urls = [];
     for (final xfile in xfiles) {

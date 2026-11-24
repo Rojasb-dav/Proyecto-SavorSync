@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:image_picker/image_picker.dart';
@@ -42,6 +43,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   ];
 
   XFile? _pickedXFile;
+  Uint8List? _pickedImageBytes;
   final _picker = ImagePicker();
   double _rating = 4.0;
   bool _loading = false;
@@ -87,7 +89,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         imageQuality: 85,
       );
       if (pickedFile != null) {
-        setState(() => _pickedXFile = pickedFile);
+        final bytes = await pickedFile.readAsBytes();
+        setState(() {
+          _pickedXFile = pickedFile;
+          _pickedImageBytes = bytes;
+        });
       }
     } catch (e) {
       debugPrint('Error al seleccionar imagen: $e');
@@ -193,14 +199,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.grey[300]!),
-                    image: _pickedXFile != null
+                    image: _pickedImageBytes != null
                         ? DecorationImage(
-                            image: NetworkImage(_pickedXFile!.path),
+                            image: MemoryImage(_pickedImageBytes!),
                             fit: BoxFit.cover,
                           )
                         : null,
                   ),
-                  child: _pickedXFile == null
+                  child: _pickedImageBytes == null
                       ? Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
