@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
-import '../../core/services/auth_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/cloudinary_service.dart';
 
@@ -19,7 +19,6 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
-  final AuthService _authService = AuthService();
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _usernameController;
@@ -37,34 +36,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     final user = context.read<AuthProvider>().user;
-    _nameController = TextEditingController(text: user?.fullName ?? '');
+    _nameController = TextEditingController(text: user?.fullName ?? user?.username ?? '');
     _bioController = TextEditingController(text: user?.bio ?? '');
     _usernameController = TextEditingController(text: user?.username ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
     _avatarUrl = user?.avatarUrl;
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final user = context.watch<AuthProvider>().user;
-    if (user != null) {
-      if (_nameController.text.isEmpty && user.fullName != null && user.fullName!.isNotEmpty) {
-        _nameController.text = user.fullName!;
-      }
-      if (_usernameController.text.isEmpty && user.username.isNotEmpty) {
-        _usernameController.text = user.username;
-      }
-      if (_bioController.text.isEmpty && user.bio != null && user.bio!.isNotEmpty) {
-        _bioController.text = user.bio!;
-      }
-      if (_phoneController.text.isEmpty && user.phone != null && user.phone!.isNotEmpty) {
-        _phoneController.text = user.phone!;
-      }
-      if (_avatarUrl == null || _avatarUrl!.isEmpty) {
-        _avatarUrl = user.avatarUrl;
-      }
-    }
   }
 
   Future<void> _pickAvatar() async {
@@ -83,8 +59,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _linkGoogleAccount() async {
     try {
-      final result = await _authService.signInWithGoogle();
+      final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) return;
+
+      final user = context.read<AuthProvider>().user;
+      if (user == null) return;
+
+      final String? googlePhoto = googleUser.photoUrl;
+      final String googleEmail = googleUser.email;
+
+      final updateData = {
+        'emailVerified': true,
+        if (googlePhoto != null && googlePhoto.isNotEmpty && (_avatarUrl == null || _avatarUrl!.isEmpty))
+          'avatarUrl': googlePhoto,
+      };
+
+      try {
+        await _apiService.dio.put('/users/${user.id}', data: updateData);
+      } catch (_) {}
+
       if (!mounted) return;
+
+      context.read<AuthProvider>().updateUser({
+        'id': user.id,
+        'email': user.email,
+        'username': user.username,
+        'fullName': user.fullName,
+        'bio': user.bio,
+        'phone': user.phone,
+        'avatarUrl': googlePhoto ?? user.avatarUrl,
+        'role': user.role,
+        'emailVerified': true,
+      });
 
       showDialog(
         context: context,
@@ -98,7 +105,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ],
           ),
           content: Text(
-            'Tu perfil de Foodie ha sido enlazado exitosamente con la cuenta verificada de Google: ${result.user.email}. Ahora podrás iniciar sesión con un solo clic usando el botón de Google.',
+            'Tu perfil de Foodie ha sido vinculado exitosamente con la cuenta de Google verificada: $googleEmail.',
             style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
           ),
           actions: [
@@ -160,9 +167,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       final updateData = {
-        'fullName': _nameController.text.trim(),
         'bio': _bioController.text.trim(),
-        'username': _usernameController.text.trim(),
         'phone': _phoneController.text.trim(),
         'avatarUrl': finalAvatarUrl,
         'bannerUrl': finalBannerUrl,
@@ -176,8 +181,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       context.read<AuthProvider>().updateUser({
         'id': user.id,
         'email': user.email,
-        'username': _usernameController.text.trim(),
-        'fullName': _nameController.text.trim(),
+        'username': user.username,
+        'fullName': user.fullName,
         'bio': _bioController.text.trim(),
         'phone': _phoneController.text.trim(),
         'avatarUrl': finalAvatarUrl,
@@ -292,38 +297,59 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 24),
 
-              Text('Nombre Completo', style: AppTextStyles.title),
+              Text('Nombre Completo 🔒', style: AppTextStyles.title),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(hintText: 'Tu nombre y apellido'),
+                enabled: false,
+                decoration: InputDecoration(
+                  hintText: 'Tu nombre y apellido',
+                  fillColor: Colors.grey.shade100,
+                  filled: true,
+                  prefixIcon: const Icon(Icons.lock_rounded, color: Colors.grey),
+                  helperText: 'El nombre completo está protegido y no se puede modificar.',
+                  helperStyle: AppTextStyles.caption.copyWith(color: Colors.grey.shade600),
+                ),
               ),
               const SizedBox(height: 16),
 
-              Text('Nombre de usuario', style: AppTextStyles.title),
+              Text('Nombre de usuario 🔒', style: AppTextStyles.title),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _usernameController,
-                decoration: const InputDecoration(hintText: 'usuario'),
-                validator: (v) => v!.isEmpty ? 'Requerido' : null,
+                enabled: false,
+                decoration: InputDecoration(
+                  hintText: 'usuario',
+                  fillColor: Colors.grey.shade100,
+                  filled: true,
+                  prefixIcon: const Icon(Icons.lock_rounded, color: Colors.grey),
+                  helperText: 'El nombre de usuario (@username) está bloqueado por seguridad.',
+                  helperStyle: AppTextStyles.caption.copyWith(color: Colors.grey.shade600),
+                ),
               ),
               const SizedBox(height: 16),
 
-              Text('Teléfono de contacto', style: AppTextStyles.title),
+              Text('Teléfono de contacto ✏️', style: AppTextStyles.title),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(hintText: 'Ej. +57 300 1234567'),
+                decoration: const InputDecoration(
+                  hintText: 'Ej. +57 300 1234567',
+                  prefixIcon: Icon(Icons.phone_outlined, color: AppColors.primary),
+                ),
               ),
               const SizedBox(height: 16),
 
-              Text('Biografía', style: AppTextStyles.title),
+              Text('Biografía ✏️', style: AppTextStyles.title),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _bioController,
                 maxLines: 3,
-                decoration: const InputDecoration(hintText: 'Cuéntale a la comunidad foodie sobre tus gustos culinarios...'),
+                decoration: const InputDecoration(
+                  hintText: 'Cuéntale a la comunidad foodie sobre tus gustos culinarios...',
+                  prefixIcon: Icon(Icons.edit_note_rounded, color: AppColors.primary),
+                ),
               ),
 
               if (isFoodie) ...[
