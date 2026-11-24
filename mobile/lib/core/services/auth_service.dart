@@ -17,7 +17,7 @@ class AuthService {
   Future<AuthResult> login(String email, String password) async {
     try {
       final response = await _apiService.dio.post(
-        '/api/auth/login',
+        '/auth/login',
         data: {
           'email': email.trim(),
           'password': password.trim(),
@@ -50,7 +50,7 @@ class AuthService {
   }) async {
     try {
       final response = await _apiService.dio.post(
-        '/api/auth/register',
+        '/auth/register',
         data: {
           'email': email.trim(),
           'username': username.trim(),
@@ -97,14 +97,14 @@ class AuthService {
 
   Future<void> logout() async {
     try {
-      await _apiService.dio.post('/api/auth/logout');
+      await _apiService.dio.post('/auth/logout');
     } catch (_) {}
     await _tokenStorage.clear();
   }
 
   Future<UserModel> fetchUserById(String id) async {
     try {
-      final response = await _apiService.dio.get('/api/users/$id');
+      final response = await _apiService.dio.get('/users/$id');
       final data = Map<String, dynamic>.from(response.data);
       return UserModel.fromJson(data);
     } catch (e) {
@@ -121,7 +121,7 @@ class AuthService {
   Future<void> forgotPassword(String email) async {
     try {
       await _apiService.dio.post(
-        '/api/auth/forgot-password',
+        '/auth/forgot-password',
         data: {'email': email.trim()},
       );
     } on DioException catch (e) {
@@ -133,7 +133,7 @@ class AuthService {
   Future<void> resetPassword(String email, String code, String newPassword) async {
     try {
       await _apiService.dio.post(
-        '/api/auth/reset-password',
+        '/auth/reset-password',
         data: {
           'email': email.trim(),
           'code': code.trim(),
