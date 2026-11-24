@@ -37,11 +37,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     final user = context.read<AuthProvider>().user;
-    _nameController = TextEditingController(text: user?.fullName);
-    _bioController = TextEditingController(text: user?.bio);
-    _usernameController = TextEditingController(text: user?.username);
-    _phoneController = TextEditingController(text: user?.phone);
+    _nameController = TextEditingController(text: user?.fullName ?? '');
+    _bioController = TextEditingController(text: user?.bio ?? '');
+    _usernameController = TextEditingController(text: user?.username ?? '');
+    _phoneController = TextEditingController(text: user?.phone ?? '');
     _avatarUrl = user?.avatarUrl;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final user = context.watch<AuthProvider>().user;
+    if (user != null) {
+      if (_nameController.text.isEmpty && (user.fullName ?? '').isNotEmpty) {
+        _nameController.text = user.fullName!;
+      }
+      if (_usernameController.text.isEmpty && (user.username ?? '').isNotEmpty) {
+        _usernameController.text = user.username!;
+      }
+      if (_bioController.text.isEmpty && (user.bio ?? '').isNotEmpty) {
+        _bioController.text = user.bio!;
+      }
+      if (_phoneController.text.isEmpty && (user.phone ?? '').isNotEmpty) {
+        _phoneController.text = user.phone!;
+      }
+      if (_avatarUrl == null || _avatarUrl!.isEmpty) {
+        _avatarUrl = user.avatarUrl;
+      }
+    }
   }
 
   Future<void> _pickAvatar() async {

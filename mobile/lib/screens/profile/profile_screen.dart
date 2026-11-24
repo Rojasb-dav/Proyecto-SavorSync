@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
+import '../../core/utils/token_storage.dart';
 import '../../models/post_model.dart';
 import '../../models/reservation_model.dart';
 import '../../models/restaurant_model.dart';
@@ -64,6 +65,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       final resList = await _apiService.getReservations(userId: targetId);
       final allRestaurants = await _apiService.getRestaurants();
 
+      final favoriteIds = await TokenStorage().getFavoriteRestaurantIds();
+      final userFavorites = allRestaurants.where((r) => favoriteIds.contains(r.id)).toList();
+
       final restMap = {for (var r in allRestaurants) r.id: r.name};
 
       final enrichedReservations = resList.map((r) {
@@ -91,7 +95,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         _user = fetchedUser;
         _posts = postsList;
         _reservations = enrichedReservations;
-        _favorites = allRestaurants.take(3).toList();
+        _favorites = userFavorites;
         _isFollowing = fetchedUser.isFollowing ?? false;
         _loading = false;
       });
@@ -405,7 +409,21 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   ),
 
             _favorites.isEmpty
-                ? Center(child: Text('Aún no tienes restaurantes en favoritos', style: TextStyle(color: textColor)))
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.favorite_border_rounded, size: 54, color: AppColors.primary),
+                          const SizedBox(height: 12),
+                          Text('Aún no tienes restaurantes en favoritos', style: AppTextStyles.title.copyWith(color: textColor)),
+                          const SizedBox(height: 4),
+                          Text('Explora la app y presiona el ❤️ en la ficha del restaurante para guardarlo aquí.', style: AppTextStyles.caption.copyWith(color: textColor.withValues(alpha: 0.7)), textAlign: TextAlign.center),
+                        ],
+                      ),
+                    ),
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: _favorites.length,
