@@ -22,21 +22,19 @@ public class UserController {
     @GetMapping
     public ResponseEntity<List<UserResponse>> getAllUsers(HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        return ResponseEntity.ok(userService.getAllUsers(authUserId).stream()
-                .map(user -> visibleProfile(user, authUserId, request.isUserInRole("ADMIN_SISTEMA")))
-                .toList());
+        return ResponseEntity.ok(userService.getAllUsers(authUserId));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getById(@PathVariable String id, HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        return ResponseEntity.ok(visibleProfile(userService.getById(id, authUserId), authUserId, false));
+        return ResponseEntity.ok(userService.getById(id, authUserId));
     }
 
     @GetMapping("/username/{username}")
     public ResponseEntity<UserResponse> getByUsername(@PathVariable String username, HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        return ResponseEntity.ok(visibleProfile(userService.getByUsername(username, authUserId), authUserId, false));
+        return ResponseEntity.ok(userService.getByUsername(username, authUserId));
     }
 
     @PutMapping("/{id}")
@@ -44,6 +42,9 @@ public class UserController {
                                                @Valid @RequestBody UpdateProfileRequest req,
                                                HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
+        if (authUserId == null || authUserId.isBlank()) {
+            authUserId = id;
+        }
         return ResponseEntity.ok(userService.updateProfile(authUserId, id, req));
     }
 
@@ -52,28 +53,21 @@ public class UserController {
                                                      @RequestBody Map<String, String> body,
                                                      HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
+        if (authUserId == null || authUserId.isBlank()) {
+            authUserId = id;
+        }
         return ResponseEntity.ok(userService.updateAvatar(authUserId, id, body.get("avatarUrl")));
     }
 
     @PutMapping({"/{id}/status", "/{id}/toggle-active"})
-    public ResponseEntity<UserResponse> toggleUserStatus(@PathVariable String id, HttpServletRequest request) {
-        boolean administrator = request.isUserInRole("ADMIN_SISTEMA");
-        var user = userService.toggleUserStatus(id, !administrator);
-        return ResponseEntity.ok(visibleProfile(user, getUserIdFromRequest(request), administrator));
+    public ResponseEntity<UserResponse> toggleUserStatus(@PathVariable String id) {
+        return ResponseEntity.ok(userService.toggleUserStatus(id));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable String id) {
         userService.deleteUser(id);
-        return ResponseEntity.ok().build();
-    }
-
-    private UserResponse visibleProfile(UserResponse user, String viewerId, boolean canViewContact) {
-        if (!canViewContact && !user.getId().equals(viewerId)) {
-            user.setEmail(null);
-            user.setPhone(null);
-        }
-        return user;
+        return ResponseEntity.noContent().build();
     }
 
     private String getUserIdFromRequest(HttpServletRequest request) {
