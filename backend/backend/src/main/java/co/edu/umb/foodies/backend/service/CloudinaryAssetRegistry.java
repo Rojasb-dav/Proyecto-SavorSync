@@ -5,6 +5,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -35,16 +37,30 @@ public class CloudinaryAssetRegistry {
             String referenceType,
             String referenceId) {
         if (secureUrl == null || secureUrl.isBlank()) return false;
-        return jdbc.update("""
+        int attached = jdbc.update("""
                 UPDATE cloudinary_assets
                 SET attached_at = CURRENT_TIMESTAMP,
                     reference_type = ?,
                     reference_id = ?
                 WHERE owner_type = ?
                   AND owner_id = ?
-                  AND secure_url = ?
+                  AND CAST(secure_url AS BINARY) = CAST(? AS BINARY)
                   AND attached_at IS NULL
                 """,
-                referenceType, referenceId, ownerType, ownerId, secureUrl) == 1;
+                referenceType, referenceId, ownerType, ownerId, secureUrl);
+        if (attached == 1) return true;
+        if (attached > 1) return false;
+
+        List<Map<String, Object>> existing = jdbc.queryForList("""
+                SELECT id
+                FROM cloudinary_assets
+                WHERE owner_type = ?
+                  AND owner_id = ?
+                  AND CAST(secure_url AS BINARY) = CAST(? AS BINARY)
+                  AND reference_type = ?
+                  AND reference_id = ?
+                  AND attached_at IS NOT NULL
+                """, new Object[]{ownerType, ownerId, secureUrl, referenceType, referenceId});
+        return existing.size() == 1;
     }
 }

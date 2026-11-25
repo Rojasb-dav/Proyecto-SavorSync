@@ -1,5 +1,7 @@
 # SavorSync P0 — Handoff de auditoría V3.1
 
+> **Actualización V3.2.** La siguiente entrega registra la evidencia de MySQL aislado, el estado de cada hallazgo residual y las pendientes de producción. Este archivo conserva el informe histórico V3.1. [P0_V32_AUDIT_HANDOFF.md](P0_V32_AUDIT_HANDOFF.md)
+
 ## Identificación
 
 - Rama: `fix/savorsync-remediation-v3`.

@@ -256,6 +256,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                   TextField(
                     controller: _restaurantDescription,
+                    onChanged: (_) => setState(() {}),
                     maxLines: 3,
                     maxLength: 2000,
                     decoration: const InputDecoration(labelText: 'Describe tu solicitud'),

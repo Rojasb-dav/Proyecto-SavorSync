@@ -129,4 +129,10 @@ Este addendum es el estado vigente para la rama `fix/savorsync-remediation-v3`, 
 
 V1 reconstruye las 22 tablas originales sólo en una base vacía. Una base existente requiere respaldo y cotejo; no hay baseline automático ni migración de producción.
 
+## Addendum V3.2 — 2026-11-25
+
+La rama local aplicó V1–V5 y validó Hibernate con MySQL 8.0 de pruebas. Se probó también baseline legado explícito, datos sintéticos retenidos y fallo controlado ante colisión de identidad. Los dos recorridos usan esquemas separados; se dejó intacto el esquema inicial con migración incompleta. Evidencia en MYSQL_MIGRATION_VALIDATION.md.
+
+Los residuales V3.2-01 a V3.2-06 se corrigen en propiedad de assets, reenvío de requestedRole, transición individual de empleados, allowlist de autorización, fixtures MySQL y pruebas de SessionMySqlTest. El estado por hallazgo, suite Java/Flutter y límites externos quedan en P0_V32_AUDIT_HANDOFF.md. No se cambia a P1; no se modifican servicios externos ni se migra Aiven.
+
 

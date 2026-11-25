@@ -30,3 +30,16 @@
 | Archivos Cloudinary | Proxy autenticado, JPEG/PNG, validación y tracking de huérfanos | Tests locales; Cloudinary no ejecutado |
 | Google Sign-In / Firebase Auth | Deshabilitado / no implementado | JWT permanece como sistema de autenticación |
 | WebSockets / FCM | No iniciado | Diferido a P1; no hubo cambios
+
+## Estado residual V3.2 — 2026-11-25
+
+| Funcionalidad | Estado | Evidencia |
+|---|---|---|
+| Registro, reenvío y tipo de cuenta | Implementado y probado en MySQL; tipo solicitado persiste entre registro, reenvío y aprobación sin privilegios automáticos. | SessionMySqlTest |
+| Verificación de empleados legacy | Implementada y probada con fixtures moderador/admin_sistema no verificados; no se activa verificación masiva. | SessionMySqlTest |
+| Publicaciones y asociación de imágenes | Asociación exige registro de asset y dueño; reuso en otro recurso/usuario rechazado y rollback probado. | SessionMySqlTest |
+| Matriz de autorización | Reglas explícitas por método y rol, servicios aplican titularidad/estado, rutas no listadas denegadas. | AuthorizationMvcTest, matriz AUTHORIZATION_MATRIX.md |
+| Migraciones | Flyway V1–V5 probadas desde cero y baseline legado con colisiones controladas; JPA valida contra esquema. | MysqlMigrationValidationTest, MysqlLegacyBaselineValidationTest, MYSQL_MIGRATION_VALIDATION.md |
+| Cloudinary real | No se ejecutó cuenta externa; JPEG/PNG backend y autorización comprobados localmente. | Sin verificación de proveedor |
+| Flutter Web / Android | Estado final y análisis documentados en P0_V32_AUDIT_HANDOFF.md. | Tests/build locales, sin E2E físico |
+| FCM/WebSockets/Firebase Auth | Sin iniciar; Firebase Auth no sustituye Spring Security/JWT. | Diferido, fuera de V3.2 |

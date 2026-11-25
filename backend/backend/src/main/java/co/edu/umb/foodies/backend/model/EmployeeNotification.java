@@ -23,14 +23,14 @@ public class EmployeeNotification {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "empleado_id", length = 36, nullable = false)
+    @Column(name = "empleado_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String employeeId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo", nullable = false)
+    @Column(name = "tipo", nullable = false, columnDefinition = "ENUM('nuevo_reporte','nuevo_restaurante','escalamiento','nueva_pqrs')")
     private NotificationType type;
 
     @Column(name = "titulo", nullable = false, length = 200)
@@ -44,7 +44,7 @@ public class EmployeeNotification {
     private Boolean read = false;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "canal", nullable = false)
+    @Column(name = "canal", nullable = false, columnDefinition = "ENUM('email','in_app')")
     @Builder.Default
     private Channel channel = Channel.in_app;
 

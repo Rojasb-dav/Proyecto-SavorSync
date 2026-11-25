@@ -56,8 +56,20 @@ public class ReservationController {
 
     @PostMapping
     public ResponseEntity<ReservationDTO> createReservation(@RequestBody Reservation reservation, HttpServletRequest request) {
+        String customerId = request.getUserPrincipal().getName();
+        User customer = userRepository.findById(customerId)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive())
+                        && Boolean.TRUE.equals(user.getEmailVerified())
+                        && user.getRole() == User.Role.foodie)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Solo una cuenta Foodie verificada puede reservar."));
+        Restaurant restaurant = restaurantRepository.findById(reservation.getRestaurantId())
+                .filter(found -> found.getStatus() == Restaurant.RestaurantStatus.activo)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Restaurante no encontrado o no disponible."));
         reservation.setId(null);
-        reservation.setClienteId(request.getUserPrincipal().getName());
+        reservation.setClienteId(customer.getId());
+        reservation.setRestaurantId(restaurant.getId());
 
         reservation.setEstado(Reservation.ReservationStatus.pendiente);
         Reservation saved = reservationRepository.save(reservation);

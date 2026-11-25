@@ -23,17 +23,17 @@ public class ContentReport {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "reporter_id", length = 36, nullable = false)
+    @Column(name = "reporter_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String reporterId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo_contenido", nullable = false)
+    @Column(name = "tipo_contenido", nullable = false, columnDefinition = "ENUM('publicacion','comentario','restaurante')")
     private ContentType contentType;
 
-    @Column(name = "contenido_id", length = 36, nullable = false)
+    @Column(name = "contenido_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String contentId;
 
     @Column(name = "motivo", nullable = false, length = 100)
@@ -43,7 +43,7 @@ public class ContentReport {
     private String description;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado")
+    @Column(name = "estado", columnDefinition = "ENUM('pendiente','revisado','resuelto')")
     @Builder.Default
     private ReportStatus status = ReportStatus.pendiente;
 

@@ -14,7 +14,7 @@ public class Employee {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
     @Column(unique = true, nullable = false, length = 191)
@@ -30,7 +30,7 @@ public class Employee {
     private String fullName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "cargo", nullable = false)
+    @Column(name = "cargo", nullable = false, columnDefinition = "ENUM('moderador','admin_sistema')")
     private Role role;
 
     @Column(name = "is_active", nullable = false)

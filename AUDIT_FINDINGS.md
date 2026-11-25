@@ -122,3 +122,17 @@ Los hallazgos FALLO-01–55 anteriores describen una auditoría V2 y se conserva
 
 El repositorio no define los identificadores `V3-01`–`V3-07` en documentos ni código. Se registran sin asignarles causas inventadas; la correspondencia con el informe externo de auditoría queda pendiente. No se constató regresión de producción ni se ejecutó sobre un servicio remoto.
 
+## Hallazgos residuales de auditoría V3.2 — 2026-11-25
+
+| Hallazgo | Resultado de revisión local |
+|---|---|
+| V3.2-01 Propiedad de imágenes | Corregido: PostService y UserService comprueban el resultado de attachIfOwned; asociación idempotente sólo para el mismo recurso/dueño; una asociación fallida revierte persistencia. Se probaron URL ajena, arbitraria, reuso y rollback. Imágenes históricas no se borran. |
+| V3.2-02 Tipo solicitado | Corregido y probado: reenvío lee requested_role desde el registro de identidad. Flutter conserva email, challenge y tipo solicitado pendiente de verificación entre reaperturas; ese dato no asigna permisos. Aprobación revoca sesiones antiguas. |
+| V3.2-03 Empleados existentes | Corregido y probado con moderador y admin_sistema sintéticos: ambos pueden solicitar OTP y verificarse individualmente. No hay verificación masiva ni cuentas privilegiadas de fallback. La transición real de cuentas depende de un operador propietario autorizado. |
+| V3.2-04 Autorización exhaustiva | SecurityConfig usa reglas por método/rol y denyAll final; controladores/servicios revisados comprueban titular/restaurante y estado. Pruebas seleccionadas y matriz creada. Revisión combinatoria no ejecutada y módulos P1 no implementados. |
+| V3.2-05 MySQL/Flyway | Corregido localmente: cinco migraciones, historial y checksums válidos desde base nueva; JPA validate; baseline de esquema legado preserva fixtures; colisión normalizada falla sin borrar filas. No Aiven. |
+| V3.2-06 SessionMySqlTest | Contrato actualizado: 202 y RegistrationResponse sin JWT, código de seis dígitos capturado de correo simulado, AuthResponse tras OTP, sesión/revocación y flujo de aprobación. Sin correo real. |
+
+Los errores iniciales de pruebas ocasionados por URL de fixtures, contador persistente entre corridas y checksum previo se corrigieron en el arnés local; no se deshabilitaron casos ni se alteraron pruebas para ocultar fallos. Los resultados finales y conteos se anotan en el handoff V3.2 tras inspeccionar XML JUnit.
+
+La corrida final aprobó 65 pruebas Java, incluidas 10 de sesión contra MySQL. Se corrigió un interbloqueo de recuperación detectado por las pruebas concurrentes. Véase [P0_V32_AUDIT_HANDOFF.md](P0_V32_AUDIT_HANDOFF.md).

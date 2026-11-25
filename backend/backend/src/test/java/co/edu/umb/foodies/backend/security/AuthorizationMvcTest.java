@@ -147,4 +147,37 @@ class AuthorizationMvcTest {
         verify(notifications, times(2)).findById("notice");
         verifyNoMoreInteractions(notifications);
     }
+
+    @Test
+    void internalAndUnverifiedAccountsCannotUseFoodieSocialWrites() throws Exception {
+        for (String role : List.of("RESTAURANT_ADMIN", "MODERADOR", "ADMIN_SISTEMA", "UNVERIFIED")) {
+            mvc.perform(post("/api/v1/posts").with(user("actor").roles(role))
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            mvc.perform(post("/api/v1/posts/post/comments").with(user("actor").roles(role))
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            mvc.perform(post("/api/v1/posts/post/like").with(user("actor").roles(role)))
+                    .andExpect(status().isForbidden());
+            mvc.perform(post("/api/v1/follows/target").with(user("actor").roles(role)))
+                    .andExpect(status().isForbidden());
+        }
+        verifyNoInteractions(postService);
+    }
+
+    @Test
+    void publicMenuReadsRequireAnApprovedRestaurant() throws Exception {
+        when(restaurants.findById("approved")).thenReturn(Optional.of(Restaurant.builder()
+                .id("approved").status(Restaurant.RestaurantStatus.activo).build()));
+        when(restaurants.findById("pending")).thenReturn(Optional.of(Restaurant.builder()
+                .id("pending").status(Restaurant.RestaurantStatus.pendiente).build()));
+        when(menu.findByRestaurantId("approved")).thenReturn(List.of());
+
+        mvc.perform(get("/api/v1/restaurants/approved/menu"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isArray());
+        mvc.perform(get("/api/v1/restaurants/pending/menu"))
+                .andExpect(status().isNotFound());
+        verify(menu).findByRestaurantId("approved");
+        verify(menu, never()).findByRestaurantId("pending");
+    }
 }

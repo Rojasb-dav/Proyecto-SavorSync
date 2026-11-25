@@ -56,7 +56,8 @@ class _SplashScreenState extends State<SplashScreen> {
             status != AuthStatus.unauthenticated)) {
       return;
     }
-    _open(status == AuthStatus.authenticated
+    final hasPendingVerification = _auth?.pendingVerification != null;
+    _open(status == AuthStatus.authenticated || hasPendingVerification
         ? const RoleBasedShell()
         : const LoginScreen());
   }

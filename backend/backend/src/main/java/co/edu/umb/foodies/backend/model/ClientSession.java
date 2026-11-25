@@ -21,17 +21,17 @@ public class ClientSession {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String userId;
 
     @Column(name = "session_token", nullable = false, length = 191)
     private String sessionToken;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "plataforma", nullable = false)
+    @Column(name = "plataforma", nullable = false, columnDefinition = "ENUM('mobile','web_restaurante')")
     private Platform platform;
 
     @Column(name = "ip_address", length = 45)

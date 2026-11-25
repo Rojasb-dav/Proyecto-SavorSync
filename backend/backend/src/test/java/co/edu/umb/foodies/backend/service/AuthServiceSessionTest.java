@@ -190,7 +190,7 @@ class AuthServiceSessionTest {
         when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
         when(employees.findByEmail(EMAIL)).thenReturn(Optional.empty());
         when(challenges.consumePasswordResetChallenge(
-                EMAIL, "123456", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client))
+                user.getId(), EMAIL, "123456", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client))
                 .thenReturn(true);
         when(passwordEncoder.encode("new-password-test")).thenReturn("new-hash");
 
@@ -198,7 +198,7 @@ class AuthServiceSessionTest {
 
         verify(users).save(user);
         verify(challenges).consumePasswordResetChallenge(
-                EMAIL, "123456", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client);
+                user.getId(), EMAIL, "123456", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client);
         verify(clientSessions).revokeActiveByUserId(user.getId());
         assertThat(user.getPassword()).isEqualTo("new-hash");
     }
@@ -208,7 +208,7 @@ class AuthServiceSessionTest {
         when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
         when(employees.findByEmail(EMAIL)).thenReturn(Optional.empty());
         when(challenges.consumePasswordResetChallenge(
-                EMAIL, "000000", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client))
+                user.getId(), EMAIL, "000000", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client))
                 .thenReturn(false);
 
         assertThat(service.resetPassword(EMAIL, "000000", "new-password-test")).isFalse();

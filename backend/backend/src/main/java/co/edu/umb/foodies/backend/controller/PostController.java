@@ -67,7 +67,7 @@ public class PostController {
             return ResponseEntity.ok(List.of());
         }
         List<CommentDTO> dtos = comments.stream()
-                .filter(c -> c != null)
+                .filter(c -> c != null && "activo".equalsIgnoreCase(c.getStatus()))
                 .map(c -> {
                     User author = null;
                     if (c.getClienteId() != null && !c.getClienteId().isBlank()) {
@@ -94,6 +94,14 @@ public class PostController {
         User author = userRepository.findById(userId).orElse(null);
         if (author == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Usuario autor no encontrado");
+        }
+        if (author.getRole() != User.Role.foodie) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Esta operación está disponible para cuentas Foodie.");
+        }
+        if (content.isBlank() || content.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El comentario debe contener entre 1 y 200 caracteres.");
         }
 
         Comment comment = Comment.builder()

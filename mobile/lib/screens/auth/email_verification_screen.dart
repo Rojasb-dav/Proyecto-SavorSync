@@ -8,6 +8,7 @@ import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../shell/role_based_shell.dart';
+import 'login_screen.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   const EmailVerificationScreen({
@@ -119,7 +120,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       textAlign: TextAlign.center),
                   const SizedBox(height: 8),
                   Text(
-                    'Escribimos a ${widget.email}. Ingresa el código de seis dígitos. Caduca en 15 minutos.',
+                    'Ingresa el código de seis dígitos para ${widget.email}. Si no lo recibiste, puedes pedir otro. Caduca en 15 minutos.',
                     style: AppTextStyles.subtle,
                     textAlign: TextAlign.center,
                   ),
@@ -157,6 +158,20 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     child: Text(_resendWaitSeconds > 0
                         ? 'Reenviar en $_resendWaitSeconds s'
                         : 'Reenviar código'),
+                  ),
+                  TextButton(
+                    onPressed: auth.loading
+                        ? null
+                        : () async {
+                            final navigator = Navigator.of(context);
+                            await auth.abandonPendingVerification();
+                            if (!mounted) return;
+                            navigator.pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (_) => const LoginScreen()),
+                              (_) => false,
+                            );
+                          },
+                    child: const Text('Volver al inicio de sesión'),
                   ),
                 ],
               ),

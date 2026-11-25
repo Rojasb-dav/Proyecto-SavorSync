@@ -30,17 +30,23 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
             @Param("identityId") String identityId,
             @Param("purpose") PasswordResetToken.Purpose purpose);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(value = """
+            SELECT * FROM tokens_recuperacion
+            WHERE identity_type = :identityType AND purpose = :purpose
+              AND active_identity_id = :identityId
+            FOR UPDATE
+            """, nativeQuery = true)
+    Optional<PasswordResetToken> findActiveForUpdate(
+            @Param("identityId") String identityId,
+            @Param("identityType") String identityType,
+            @Param("purpose") String purpose);
+
+    @Modifying
     @Query("""
-            select t from PasswordResetToken t
-            where lower(t.email) = :email and t.identityType = :identityType
-              and t.purpose = :purpose and t.consumedAt is null
-            order by t.createdAt desc
+            update PasswordResetToken t set t.consumedAt = CURRENT_TIMESTAMP
+            where t.id = :id and t.consumedAt is null
             """)
-    List<PasswordResetToken> findActiveForIdentityForUpdateByEmail(
-            @Param("email") String email,
-            @Param("identityType") PasswordResetToken.IdentityType identityType,
-            @Param("purpose") PasswordResetToken.Purpose purpose);
+    int consumeForResend(@Param("id") String id);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

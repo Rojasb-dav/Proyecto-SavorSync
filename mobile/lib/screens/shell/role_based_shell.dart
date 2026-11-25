@@ -15,6 +15,7 @@ import '../admin/restaurant_approvals_screen.dart';
 import '../admin/restaurant_profile_screen.dart';
 import '../admin/restaurant_reservations_screen.dart';
 import '../admin/user_governance_screen.dart';
+import '../auth/email_verification_screen.dart';
 import '../auth/login_screen.dart';
 import '../home/home_screen.dart';
 
@@ -37,6 +38,14 @@ class _RoleBasedShellState extends State<RoleBasedShell> {
         body: Center(
           child: CircularProgressIndicator(color: AppColors.primary),
         ),
+      );
+    }
+
+    final pending = auth.pendingVerification;
+    if (auth.user == null && pending != null) {
+      return EmailVerificationScreen(
+        email: auth.pendingVerificationEmail ?? '',
+        requestedRole: auth.pendingRequestedRole ?? 'foodie',
       );
     }
 

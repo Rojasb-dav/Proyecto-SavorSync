@@ -87,9 +87,11 @@ class AuthService {
           'role': requestedRole,
         },
       );
-      return RegistrationChallenge.fromJson(
+      final challenge = RegistrationChallenge.fromJson(
         Map<String, dynamic>.from(response.data as Map),
       );
+      await _savePendingVerification(email.trim(), challenge);
+      return challenge;
     } on DioException catch (error) {
       throw Exception(_authError(error, 'Error al registrar usuario.'));
     } on FormatException {
@@ -124,6 +126,7 @@ class AuthService {
   Future<RegistrationChallenge?> resendVerificationCode({
     required String email,
     String? challengeId,
+    String? password,
   }) async {
     try {
       final response = await _dio.post(
@@ -132,11 +135,14 @@ class AuthService {
         data: {
           'email': email.trim(),
           if (challengeId != null) 'challengeId': challengeId,
+          if (password != null) 'password': password,
         },
       );
       final data = Map<String, dynamic>.from(response.data as Map);
       if (data['challengeId'] == null) return null;
-      return RegistrationChallenge.fromJson(data);
+      final challenge = RegistrationChallenge.fromJson(data);
+      await _savePendingVerification(email.trim(), challenge);
+      return challenge;
     } on DioException catch (error) {
       throw Exception(_authError(error, 'No se pudo enviar el código.'));
     } on FormatException {
@@ -159,6 +165,7 @@ class AuthService {
         await _tokenStorage.clearIfCurrentToken(result.token);
         throw const FormatException('El servidor no confirmó la verificación.');
       }
+      await _tokenStorage.clearPendingVerification();
       return result;
     } on DioException catch (error) {
       throw Exception(_authError(error, 'No se pudo verificar el correo.'));
@@ -168,6 +175,22 @@ class AuthService {
       throw Exception('No se pudo verificar el correo.');
     }
   }
+
+  Future<Map<String, Object>?> restorePendingVerification() =>
+      _tokenStorage.getPendingVerification();
+
+  Future<void> clearPendingVerification() =>
+      _tokenStorage.clearPendingVerification();
+
+  Future<void> _savePendingVerification(
+    String email,
+    RegistrationChallenge challenge,
+  ) => _tokenStorage.savePendingVerification(
+        email: email,
+        challengeId: challenge.challengeId,
+        expiresInMs: challenge.expiresInMs,
+        requestedRole: challenge.requestedRole,
+      );
 
   Future<void> requestRestaurantAdmin(String description) async {
     try {

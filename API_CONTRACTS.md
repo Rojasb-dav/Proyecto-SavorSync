@@ -147,3 +147,11 @@ Esta sección prevalece sobre las tablas históricas V2 anteriores. Flutter Web 
 | POST `/files/upload` | multipart `file`; 201 `{url, publicId}`. | Cuenta activa/verificada; el servidor valida JPEG/PNG, MIME real, ≤10 MiB y ≤12 MP, sube a Cloudinary y registra propietario. El API secret no se incluye en Flutter. |
 
 Errores API tienen `status`, `code`, `message` y `timestamp`; 401, 403, 413, 429 y 503 se conservan diferenciados. Códigos OTP, JWT y secretos no forman parte de las respuestas.
+
+## Revisión de contrato V3.2 — 2026-11-25
+
+El backend de esta rama deja sin sesión el registro hasta OTP. POST /api/v1/auth/email/verification acepta email y password para recuperar el flujo desde login, o el challengeId de un desafío de verificación previo sin consumir. Una solicitud sin prueba válida recibe 202 genérico sin desafío ni rol. Un reenvío autorizado conserva requestedRole restaurant_admin mientras el rol efectivo sigue foodie hasta la aprobación administrativa. Empleados legacy no se autocertifican: deben recuperar acceso con challenge email de identidad employee. La aprobación de solicitud de cuenta no equivale a la aprobación/publicación del restaurante.
+
+SecurityConfig es allowlist por método y ruta y termina en denyAll. Las cuentas internas no pueden usar escrituras sociales Foodie. Los endpoints de menú público filtran restaurante no aprobado; lecturas privadas se acotan por titular/restaurante en servicio. El detalle por ruta y cobertura está en AUTHORIZATION_MATRIX.md.
+
+El POST de registro y el POST de reenvío entregan 202; verify produce AuthResponse con sesión persistida. X-Platform sigue siendo metadato declarado. La compatibilidad del contrato se verificó con pruebas Java y compilaciones Flutter indicadas en P0_V32_AUDIT_HANDOFF.md; no representa un contrato desplegado.

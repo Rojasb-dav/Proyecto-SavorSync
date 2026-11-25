@@ -150,12 +150,17 @@ public class AuthService {
     public RegistrationResponse requestEmailVerification(
             EmailVerificationRequest request, HttpServletRequest httpReq) {
         String email = normalizeEmail(request.email());
-        if (email.isBlank() && request.challengeId() != null) {
-            email = passwordResetTokenRepository.findById(request.challengeId())
-                    .map(PasswordResetToken::getEmail).orElse("");
-        }
-        if (email.isBlank()) return new RegistrationResponse(true, null, 0, null);
-        if (!challenges.checkRequestLimit(email, sourceAddress(httpReq))) {
+        var previous = request.challengeId() == null ? null
+                : passwordResetTokenRepository.findById(request.challengeId())
+                        .filter(token -> token.getPurpose() == PasswordResetToken.Purpose.EMAIL_VERIFICATION)
+                        .orElse(null);
+        if (email.isBlank() && previous != null) email = previous.getEmail();
+
+        RegistrationResponse generic = new RegistrationResponse(true, null, 0, null);
+        if (email.isBlank()) return generic;
+
+        String source = sourceAddress(httpReq);
+        if (!challenges.checkRequestLimit(email, source)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "Demasiadas solicitudes. Espera antes de intentar nuevamente.");
         }
@@ -163,19 +168,44 @@ public class AuthService {
         User user = userRepository.findByEmail(email).orElse(null);
         Employee employee = employeeRepository.findByEmail(email).orElse(null);
         if (user != null && employee == null && !Boolean.TRUE.equals(user.getEmailVerified())
-                && Boolean.TRUE.equals(user.getIsActive())) {
+                && Boolean.TRUE.equals(user.getIsActive())
+                && canResumeVerification(request, previous, email, user.getId(),
+                        PasswordResetToken.IdentityType.client, user.getPassword())) {
             var issued = challenges.issue(user.getId(), email, PasswordResetToken.IdentityType.client,
-                    PasswordResetToken.Purpose.EMAIL_VERIFICATION, sourceAddress(httpReq), true);
-            return new RegistrationResponse(true, issued.challengeId(), issued.expiresInMs(), "foodie");
+                    PasswordResetToken.Purpose.EMAIL_VERIFICATION, source, true);
+            String requestedRole = identities.requestedRole("client", user.getId());
+            return new RegistrationResponse(true, issued.challengeId(), issued.expiresInMs(),
+                    requestedRole == null ? "foodie" : requestedRole);
         }
         if (employee != null && user == null && !Boolean.TRUE.equals(employee.getEmailVerified())
-                && Boolean.TRUE.equals(employee.getIsActive())) {
+                && Boolean.TRUE.equals(employee.getIsActive())
+                && canResumeVerification(request, previous, email, employee.getId(),
+                        PasswordResetToken.IdentityType.employee, employee.getPassword())) {
             var issued = challenges.issue(employee.getId(), email, PasswordResetToken.IdentityType.employee,
-                    PasswordResetToken.Purpose.EMAIL_VERIFICATION, sourceAddress(httpReq), true);
-            return new RegistrationResponse(true, issued.challengeId(), issued.expiresInMs(), null);
+                    PasswordResetToken.Purpose.EMAIL_VERIFICATION, source, true);
+            return new RegistrationResponse(true, issued.challengeId(), issued.expiresInMs(), "employee");
         }
-        // Deliberately identical response shape for unknown, verified, and ambiguous identities.
-        return new RegistrationResponse(true, null, 0, null);
+        return generic;
+    }
+
+    private boolean canResumeVerification(EmailVerificationRequest request, PasswordResetToken previous,
+                                          String email, String identityId,
+                                          PasswordResetToken.IdentityType identityType, String passwordHash) {
+        if (request.password() != null) {
+            if (request.password().getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES
+                    || !passwordEncoder.matches(request.password(), passwordHash)) {
+                return false;
+            }
+            identities.lockForChallenge(identityType.name(), identityId);
+            return true;
+        }
+        if (previous == null || previous.getConsumedAt() != null
+                || !email.equals(previous.getEmail()) || !identityId.equals(previous.getIdentityId())
+                || identityType != previous.getIdentityType()) {
+            return false;
+        }
+        identities.lockForChallenge(identityType.name(), identityId);
+        return passwordResetTokenRepository.consumeForResend(previous.getId()) == 1;
     }
 
     @Transactional
@@ -254,9 +284,11 @@ public class AuthService {
         User user = userRepository.findByEmail(email).orElse(null);
         Employee employee = employeeRepository.findByEmail(email).orElse(null);
         if (user != null && employee == null) {
+            identities.lockForChallenge("client", user.getId());
             challenges.issue(user.getId(), email, PasswordResetToken.IdentityType.client,
                     PasswordResetToken.Purpose.PASSWORD_RESET, sourceAddress(request), true);
         } else if (employee != null && user == null) {
+            identities.lockForChallenge("employee", employee.getId());
             challenges.issue(employee.getId(), email, PasswordResetToken.IdentityType.employee,
                     PasswordResetToken.Purpose.PASSWORD_RESET, sourceAddress(request), true);
         }
@@ -279,7 +311,9 @@ public class AuthService {
         PasswordResetToken.IdentityType identityType = user != null
                 ? PasswordResetToken.IdentityType.client
                 : PasswordResetToken.IdentityType.employee;
-        if (!challenges.consumePasswordResetChallenge(email, code, identityType)) return false;
+        String identityId = user != null ? user.getId() : employee.getId();
+        identities.lockForChallenge(identityType.name(), identityId);
+        if (!challenges.consumePasswordResetChallenge(identityId, email, code, identityType)) return false;
 
         String encoded = passwordEncoder.encode(newPassword);
         if (user != null) {

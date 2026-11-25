@@ -25,7 +25,7 @@ public class User {
 
     @Id
     @EqualsAndHashCode.Include
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
     @Column(unique = true, nullable = false, length = 191)
@@ -41,7 +41,7 @@ public class User {
     private String fullName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "rol", nullable = false)
+    @Column(name = "rol", nullable = false, columnDefinition = "ENUM('foodie','restaurant_admin')")
     private Role role;
 
     @Column(name = "avatar_url", length = 500)
@@ -68,8 +68,8 @@ public class User {
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "seguidores",
-        joinColumns = @JoinColumn(name = "seguidor_id"),
-        inverseJoinColumns = @JoinColumn(name = "seguido_id")
+        joinColumns = @JoinColumn(name = "seguidor_id", columnDefinition = "CHAR(36)"),
+        inverseJoinColumns = @JoinColumn(name = "seguido_id", columnDefinition = "CHAR(36)")
     )
     @Builder.Default
     private Set<User> following = new HashSet<>();

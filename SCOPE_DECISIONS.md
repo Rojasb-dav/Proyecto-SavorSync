@@ -23,4 +23,9 @@
 | D14 | requested_role restaurant_admin se guarda sin privilegios; el rol efectivo cambia tras aprobación de admin_sistema. La publicación del local sigue separada. |
 | D15 | `X-Platform` es metadato declarado, no prueba de dispositivo ni autoridad. |
 | D16 | Google Sign-In sigue deshabilitado. No se introduce Firebase Auth ni se inicia FCM/WebSockets. |
-| D17 | No se migran Aiven ni se cambian servicios remotos. Rotaciones y baseline de esquema existente requieren intervención posterior del propietario.
+| D17 | No se migran Aiven ni se cambian servicios remotos. Rotaciones y baseline de esquema existente requieren intervención posterior del propietario. |
+| D18 | La transición de empleados existentes exige verificación individual antes de volver a iniciar sesión; no se aplica backfill de email_verified ni se crea acceso de emergencia. El propietario ejecutará el procedimiento para cuentas reales tras autorización. |
+| D19 | JPEG y PNG son los únicos formatos admitidos para carga en P0; SVG/WebP y formatos activos quedan rechazados. |
+| D20 | sslMode=DISABLED sólo se usa en la URL de MySQL local del contenedor de pruebas; producción requiere TLS con validación de certificados. |
+| D21 | La prueba de esquema legado se realiza en esquemas aleatorios desechables y establece baseline 1 explícitamente tras inspección. No equivale a autorización de baseline en Aiven. |
+| D22 | Reanudar el flujo de verificación exige la contraseña actual o un desafío previo de la misma cuenta. Las solicitudes sin prueba de identidad reciben una respuesta genérica. |

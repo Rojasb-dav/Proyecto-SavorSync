@@ -66,6 +66,15 @@ public class AccountIdentityRegistry {
         }
     }
 
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockForChallenge(String identityType, String identityId) {
+        jdbc.queryForObject("""
+                SELECT identity_id FROM account_identity_registry
+                WHERE identity_type = ? AND identity_id = ?
+                FOR UPDATE
+                """, String.class, identityType, identityId);
+    }
+
     @Transactional(readOnly = true)
     public String requestedRole(String identityType, String identityId) {
         List<String> roles = jdbc.query("""

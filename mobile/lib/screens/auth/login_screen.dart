@@ -79,7 +79,10 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => const RoleBasedShell()),
       );
     } else if (auth.error?.contains('EMAIL_VERIFICATION_REQUIRED') == true) {
-      final started = await auth.beginEmailVerification(_emailController.text.trim());
+      final started = await auth.beginEmailVerification(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
       if (!mounted) return;
       if (started) {
         Navigator.of(context).pushReplacement(

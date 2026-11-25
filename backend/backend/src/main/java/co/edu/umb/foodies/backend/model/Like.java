@@ -18,13 +18,13 @@ public class Like {
 
     @Id
     @EqualsAndHashCode.Include
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "publicacion_id", length = 36, nullable = false)
+    @Column(name = "publicacion_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String postId;
 
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clienteId;
 
     @Column(name = "created_at", updatable = false)

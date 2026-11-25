@@ -60,13 +60,15 @@ public class PostService {
         }
         String finalUserId = targetUserId;
         User user = userRepository.findById(finalUserId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado con ID: " + finalUserId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        requireFoodie(user);
 
         String restaurantId = null;
         if (dto.getRestaurantName() != null) {
             // Buscamos un restaurante por nombre para el demo
             Restaurant rest = restaurantRepository.findAll().stream()
-                .filter(r -> r.getName().equalsIgnoreCase(dto.getRestaurantName()))
+                .filter(r -> r.getName().equalsIgnoreCase(dto.getRestaurantName())
+                        && r.getStatus() == Restaurant.RestaurantStatus.activo)
                 .findFirst().orElse(null);
             if (rest != null) {
                 restaurantId = rest.getId();
@@ -101,10 +103,13 @@ public class PostService {
             post.setImages(new ArrayList<>());
         }
 
-        post = postRepository.save(post);
-        if (dto.getImageUrl() != null && !dto.getImageUrl().isBlank()) {
-            assetRegistry.attachIfOwned("client", finalUserId, dto.getImageUrl(), "post", post.getId());
+        if (dto.getImageUrl() != null && !dto.getImageUrl().isBlank()
+                && !assetRegistry.attachIfOwned("client", finalUserId, dto.getImageUrl(), "post", post.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "La imagen no pertenece a tu cuenta o ya está asociada a otro recurso.");
         }
+
+        post = postRepository.save(post);
         return convertToDTO(post, finalUserId);
     }
 
@@ -115,9 +120,21 @@ public class PostService {
         }
     }
 
+    private static void requireFoodie(User user) {
+        if (user.getRole() != User.Role.foodie) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Esta operación está disponible para cuentas Foodie.");
+        }
+    }
+
     private boolean canView(Post post, String viewerId) {
+        User author = post.getUser();
+        if (author == null || !Boolean.TRUE.equals(author.getIsActive())
+                || !Boolean.TRUE.equals(author.getEmailVerified())) {
+            return false;
+        }
         return (Boolean.TRUE.equals(post.getIsPublic()) && post.getStatus() == Post.PostStatus.publicada)
-                || (viewerId != null && post.getUser() != null && viewerId.equals(post.getUser().getId()));
+                || (viewerId != null && viewerId.equals(author.getId()));
     }
 
     @Transactional
@@ -126,6 +143,7 @@ public class PostService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        requireFoodie(user);
 
         boolean exists = likeRepository.existsByPostIdAndClienteId(postId, userId);
         if (exists) {
@@ -181,7 +199,9 @@ public class PostService {
 
         Restaurant rest = null;
         if (post.getRestaurantId() != null) {
-            rest = restaurantRepository.findById(post.getRestaurantId()).orElse(null);
+            rest = restaurantRepository.findById(post.getRestaurantId())
+                    .filter(found -> found.getStatus() == Restaurant.RestaurantStatus.activo)
+                    .orElse(null);
         }
 
         String img = (post.getImages() != null && !post.getImages().isEmpty()) ? post.getImages().get(0).getUrl() : null;
@@ -192,8 +212,8 @@ public class PostService {
                 .username(post.getUser() != null ? post.getUser().getUsername() : "")
                 .fullName(post.getUser() != null ? post.getUser().getFullName() : "")
                 .userAvatarUrl(post.getUser() != null ? post.getUser().getAvatarUrl() : null)
-                .restaurantName(rest != null ? rest.getName() : "Restaurante Bogotá")
-                .restaurantAddress(rest != null ? rest.getAddress() : "Bogotá")
+                .restaurantName(rest != null ? rest.getName() : null)
+                .restaurantAddress(rest != null ? rest.getAddress() : null)
                 .content(post.getContenido())
                 .rating(post.getRating())
                 .imageUrl(img)

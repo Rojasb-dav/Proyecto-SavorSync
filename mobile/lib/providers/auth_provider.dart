@@ -36,6 +36,25 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(true);
     try {
       _user = await _authService.restoreSession();
+      if (_user == null) {
+        final pending = await _authService.restorePendingVerification();
+        if (pending != null) {
+          final requestedRole = pending['requestedRole'] as String?;
+          _pendingVerification = RegistrationChallenge(
+            challengeId: pending['challengeId'] as String,
+            expiresInMs: pending['expiresInMs'] as int,
+            requestedRole: requestedRole == null || requestedRole.isEmpty
+                ? null
+                : requestedRole,
+          );
+          _pendingVerificationEmail = pending['email'] as String;
+          _pendingRequestedRole = requestedRole?.isNotEmpty == true
+              ? requestedRole
+              : 'foodie';
+        }
+      } else {
+        await _authService.clearPendingVerification();
+      }
       _status = _user == null
           ? AuthStatus.unauthenticated
           : AuthStatus.authenticated;
@@ -56,6 +75,7 @@ class AuthProvider extends ChangeNotifier {
       _status = AuthStatus.authenticated;
       _sessionNotice = null;
       _error = null;
+      await _authService.clearPendingVerification();
       _clearPendingVerification();
       return true;
     } catch (error) {
@@ -141,12 +161,13 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> beginEmailVerification(String email) async {
+  Future<bool> beginEmailVerification(String email, String password) async {
     if (_loading) return false;
     _setLoading(true);
     try {
       final challenge = await _authService.resendVerificationCode(
         email: email,
+        password: password,
       );
       if (challenge == null) {
         throw Exception('No hay un desafío de verificación activo para esta cuenta.');
@@ -164,6 +185,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> abandonPendingVerification() async {
+    await _authService.clearPendingVerification();
+    _clearPendingVerification();
+    if (!_disposed) notifyListeners();
+  }
+
   Future<bool> verifyPendingEmail(String code) async {
     final challenge = _pendingVerification;
     if (_loading || challenge == null) return false;
@@ -177,6 +204,7 @@ class AuthProvider extends ChangeNotifier {
       _status = AuthStatus.authenticated;
       _error = null;
       _sessionNotice = null;
+      await _authService.clearPendingVerification();
       _clearPendingVerification();
       return true;
     } catch (error) {

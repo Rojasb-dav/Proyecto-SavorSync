@@ -42,3 +42,16 @@ Este corte cubre seguridad e identidad. No declara terminados los RF funcionales
 | RNF-PORT | Flujos Flutter compartidos entre Web/Android sin dart:io en auth/subida. Los builds se reportan separadamente. | IMPLEMENTADA SIN VERIFICAR |
 
 Se conservan las 22 tablas originales. Las migraciones V1–V5 no se ejecutaron en MySQL.
+
+## Corte V3.2 — 2026-11-25
+
+| Requerimiento | Evidencia V3.2 | Estado local |
+|---|---|---|
+| RF01 | Registro sin JWT hasta OTP; reenvío mantiene la selección de cuenta; empleado existente completa verificación sin seed privilegiado; solicitudes de recuperación limitadas. | VERIFICADA en pruebas MySQL locales, sin SMTP real |
+| RF05 | Solicitud restaurant_admin no concede rol efectivo; aprobación por admin sistema y revocación comprobadas. Publicación del establecimiento sigue separada. | VERIFICADA en el recorrido backend local |
+| RF06/RF11 | Reglas por método/rol, cuatro roles preservados y denyAll final; acciones sociales reservadas a Foodie. | PARCIALMENTE VERIFICADA; ver matriz de autorización |
+| RNF-SEC | Sesión persistida, OTP, titularidad Cloudinary, rutas/estados protegidos, secretos fuera del diff. | VERIFICADA en pruebas locales pertinentes; no producción |
+| RNF-PORT | Servicios Flutter Web/Android comparten persistencia de solicitud pendiente, plataforma declarada y bytes XFile. | Sujeta a resultados de builds y pruebas del handoff V3.2 |
+| RNF-MANT | Flyway desde cero y baseline legado, validación JPA contra MySQL 8.0 de pruebas. | VERIFICADA localmente; no Aiven |
+
+Los módulos funcionales RF02–RF10 continúan fuera del alcance salvo sus controles de seguridad; no se inicia P1. Las pruebas no certifican despliegue ni cumplimiento legal/operacional.

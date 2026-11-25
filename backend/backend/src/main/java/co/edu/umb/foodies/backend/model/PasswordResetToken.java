@@ -19,10 +19,10 @@ public class PasswordResetToken {
     public enum Purpose { EMAIL_VERIFICATION, PASSWORD_RESET }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "identity_id", length = 36)
+    @Column(name = "identity_id", length = 36, columnDefinition = "CHAR(36)")
     private String identityId;
 
     @Enumerated(EnumType.STRING)

@@ -1,5 +1,7 @@
 # Informe de Pruebas SavorSync V3
 
+> **Actualización V3.2.** Java aprobó 65 pruebas (cero fallidas y cero omitidas) según 12 XML JUnit con MySQL local habilitado. El backend compiló. Flutter aprobó 10 pruebas y compiló Web release y APK debug. El análisis registró 16 diagnósticos informativos preexistentes y ningún error. La prueba en Chrome se detuvo durante la carga. El detalle de la corrida actual está en [P0_V32_AUDIT_HANDOFF.md](P0_V32_AUDIT_HANDOFF.md). Los resultados que aparecen a continuación corresponden a las iteraciones anteriores.
+
 ## PRE-00: Diagnóstico Local y Protección de la Rama
 
 **Rama y Commit:**

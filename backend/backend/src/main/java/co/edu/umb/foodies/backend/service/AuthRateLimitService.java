@@ -34,8 +34,8 @@ public class AuthRateLimitService {
     }
 
     /**
-     * Records both buckets in an independent transaction. A denied request is still
-     * committed so a caller cannot bypass the limit by rolling back its business work.
+     * Records source attempts independently of the business transaction.
+     * Only requests accepted by both buckets use the identity's delivery allowance.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean record(String identityKey, String sourceKey) {
@@ -49,13 +49,15 @@ public class AuthRateLimitService {
 
         for (Bucket bucket : buckets) {
             jdbc.update("""
-                    INSERT IGNORE INTO auth_rate_limits
+                    INSERT INTO auth_rate_limits
                       (bucket_key, window_started_at, request_count, last_requested_at)
                     VALUES (?, ?, 0, NULL)
+                    ON DUPLICATE KEY UPDATE bucket_key = auth_rate_limits.bucket_key
                     """, bucket.key(), now);
         }
 
         boolean allowed = true;
+        List<LockedBucket> locked = new ArrayList<>();
         for (Bucket bucket : buckets) {
             RateRow row = jdbc.queryForObject("""
                     SELECT window_started_at, request_count, last_requested_at
@@ -67,14 +69,18 @@ public class AuthRateLimitService {
                             ? null : rs.getTimestamp("last_requested_at").toLocalDateTime()
             ), bucket.key());
 
-            boolean expired = row.windowStartedAt().plusMinutes(windowMinutes).isBefore(now);
+            boolean expired = !row.windowStartedAt().plusMinutes(windowMinutes).isAfter(now);
             int count = expired ? 0 : row.requestCount();
-            if (count >= bucket.limit()) allowed = false;
-            if (bucket.identityBucket()
+            boolean coolingDown = bucket.identityBucket() && resendSeconds > 0
                     && row.lastRequestedAt() != null
-                    && row.lastRequestedAt().plusSeconds(resendSeconds).isAfter(now)) {
-                allowed = false;
-            }
+                    && row.lastRequestedAt().plusSeconds(resendSeconds).isAfter(now);
+            if (count >= bucket.limit() || coolingDown) allowed = false;
+            locked.add(new LockedBucket(bucket, expired ? now : row.windowStartedAt(), count));
+        }
+
+        for (LockedBucket state : locked) {
+            Bucket bucket = state.bucket();
+            if (bucket.identityBucket() && !allowed) continue;
             jdbc.update("""
                     UPDATE auth_rate_limits
                     SET window_started_at = ?, request_count = ?,
@@ -83,13 +89,13 @@ public class AuthRateLimitService {
                           ELSE last_requested_at
                         END
                     WHERE bucket_key = ?
-                    """, expired ? now : row.windowStartedAt(),
-                    Math.min(count + 1, bucket.limit() + 1),
-                    allowed && bucket.identityBucket() ? 1 : 0, now, bucket.key());
+                    """, state.windowStartedAt(), Math.min(state.count() + 1, bucket.limit()),
+                    bucket.identityBucket() ? 1 : 0, now, bucket.key());
         }
         return allowed;
     }
 
     private record Bucket(String key, int limit, boolean identityBucket) {}
+    private record LockedBucket(Bucket bucket, LocalDateTime windowStartedAt, int count) {}
     private record RateRow(LocalDateTime windowStartedAt, int requestCount, LocalDateTime lastRequestedAt) {}
 }

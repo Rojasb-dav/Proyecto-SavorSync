@@ -127,15 +127,14 @@ public class EmailVerificationService {
     }
 
     @Transactional
-    public boolean consumePasswordResetChallenge(String email, String code,
+    public boolean consumePasswordResetChallenge(String identityId, String email, String code,
                                                  PasswordResetToken.IdentityType identityType) {
-        String normalized = normalizeEmail(email);
-        var active = challenges.findActiveForIdentityForUpdateByEmail(normalized,
-                identityType, PasswordResetToken.Purpose.PASSWORD_RESET);
         LocalDateTime now = LocalDateTime.now();
-        PasswordResetToken candidate = active.stream()
+        PasswordResetToken candidate = challenges.findActiveForUpdate(
+                        identityId, identityType.name(), PasswordResetToken.Purpose.PASSWORD_RESET.name())
+                .filter(c -> normalizeEmail(email).equals(c.getEmail()))
                 .filter(c -> c.getExpiresAt().isAfter(now) && c.getFailedAttempts() < MAX_ATTEMPTS)
-                .findFirst().orElse(null);
+                .orElse(null);
         if (candidate == null) return false;
         if (code == null || !code.matches("[0-9]{6}") || !encoder.matches(code, candidate.getCode())) {
             candidate.setFailedAttempts(candidate.getFailedAttempts() + 1);
