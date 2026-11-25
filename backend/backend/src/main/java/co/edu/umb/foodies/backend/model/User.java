@@ -20,7 +20,7 @@ import java.util.UUID;
 public class User {
 
     public enum Role {
-        foodie, restaurant_admin, moderador, admin_sistema
+        foodie, restaurant_admin
     }
 
     @Id
@@ -65,7 +65,7 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @ManyToMany
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "seguidores",
         joinColumns = @JoinColumn(name = "seguidor_id"),
@@ -74,7 +74,7 @@ public class User {
     @Builder.Default
     private Set<User> following = new HashSet<>();
 
-    @ManyToMany(mappedBy = "following")
+    @ManyToMany(mappedBy = "following", fetch = FetchType.EAGER)
     @Builder.Default
     private Set<User> followers = new HashSet<>();
 

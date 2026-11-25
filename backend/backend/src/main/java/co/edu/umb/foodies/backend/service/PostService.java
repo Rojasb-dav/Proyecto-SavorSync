@@ -4,10 +4,13 @@ import co.edu.umb.foodies.backend.dto.PostDTO;
 import co.edu.umb.foodies.backend.model.Like;
 import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.Post;
+import co.edu.umb.foodies.backend.model.PostImage;
+import co.edu.umb.foodies.backend.model.Restaurant;
 import co.edu.umb.foodies.backend.model.User;
 import co.edu.umb.foodies.backend.repository.LikeRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.PostRepository;
+import co.edu.umb.foodies.backend.repository.RestaurantRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -26,6 +30,7 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final RestaurantRepository restaurantRepository;
     private final NotificationRepository notificationRepository;
     private final LikeRepository likeRepository;
 
@@ -55,15 +60,24 @@ public class PostService {
         String finalUserId = targetUserId;
         User user = userRepository.findById(finalUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado con ID: " + finalUserId));
-        
+
+        String restaurantId = null;
+        if (dto.getRestaurantName() != null) {
+            // Buscamos un restaurante por nombre para el demo
+            Restaurant rest = restaurantRepository.findAll().stream()
+                .filter(r -> r.getName().equalsIgnoreCase(dto.getRestaurantName()))
+                .findFirst().orElse(null);
+            if (rest != null) {
+                restaurantId = rest.getId();
+            }
+        }
+
         Post post = Post.builder()
                 .id(UUID.randomUUID().toString())
                 .user(user)
-                .restaurantName(dto.getRestaurantName() != null ? dto.getRestaurantName() : "Restaurante Bogotá")
-                .restaurantAddress(dto.getRestaurantAddress())
+                .restaurantId(restaurantId)
                 .contenido(dto.getContent() != null ? dto.getContent() : "Reseña gastronómica")
                 .rating(dto.getRating() != null ? dto.getRating() : 5.0)
-                .imageUrl(dto.getImageUrl())
                 .status(Post.PostStatus.publicada)
                 .isPublic(true)
                 .likesCount(0)
@@ -71,7 +85,21 @@ public class PostService {
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
-        
+
+        if (dto.getImageUrl() != null && !dto.getImageUrl().isBlank()) {
+            PostImage img = PostImage.builder()
+                .id(UUID.randomUUID().toString())
+                .postId(post.getId())
+                .clientId(user.getId())
+                .url(dto.getImageUrl())
+                .orderIndex(0)
+                .createdAt(LocalDateTime.now())
+                .build();
+            post.setImages(new ArrayList<>(List.of(img)));
+        } else {
+            post.setImages(new ArrayList<>());
+        }
+
         post = postRepository.save(post);
         return convertToDTO(post, finalUserId);
     }
@@ -109,12 +137,14 @@ public class PostService {
 
             if (post.getUser() != null && !post.getUser().getId().equals(userId)) {
                 try {
+                    Restaurant rest = post.getRestaurantId() != null ? restaurantRepository.findById(post.getRestaurantId()).orElse(null) : null;
+                    String restName = rest != null ? rest.getName() : "un restaurante";
                     notificationRepository.save(Notification.builder()
                             .id(UUID.randomUUID().toString())
                             .clienteId(post.getUser().getId())
                             .type(Notification.NotificationType.like)
                             .title("¡A alguien le gusta tu reseña! ❤️")
-                            .body("@" + user.getUsername() + " le ha dado Me Gusta a tu reseña sobre " + post.getRestaurantName())
+                            .body("@" + user.getUsername() + " le ha dado Me Gusta a tu reseña sobre " + restName)
                             .read(false)
                             .channel(Notification.Channel.in_app)
                             .createdAt(LocalDateTime.now())
@@ -145,17 +175,24 @@ public class PostService {
         int likesCount = (post.getLikesCount() != null) ? post.getLikesCount() : (int) likeRepository.countByPostId(post.getId());
         boolean likedByMe = currentUserId != null && likeRepository.existsByPostIdAndClienteId(post.getId(), currentUserId);
 
+        Restaurant rest = null;
+        if (post.getRestaurantId() != null) {
+            rest = restaurantRepository.findById(post.getRestaurantId()).orElse(null);
+        }
+
+        String img = (post.getImages() != null && !post.getImages().isEmpty()) ? post.getImages().get(0).getUrl() : null;
+
         return PostDTO.builder()
                 .id(post.getId())
                 .userId(post.getUser() != null ? post.getUser().getId() : "")
                 .username(post.getUser() != null ? post.getUser().getUsername() : "")
                 .fullName(post.getUser() != null ? post.getUser().getFullName() : "")
                 .userAvatarUrl(post.getUser() != null ? post.getUser().getAvatarUrl() : null)
-                .restaurantName(post.getRestaurantName())
-                .restaurantAddress(post.getRestaurantAddress())
+                .restaurantName(rest != null ? rest.getName() : "Restaurante Bogotá")
+                .restaurantAddress(rest != null ? rest.getAddress() : "Bogotá")
                 .content(post.getContenido())
                 .rating(post.getRating())
-                .imageUrl(post.getImageUrl())
+                .imageUrl(img)
                 .likesCount(likesCount)
                 .commentsCount(post.getCommentsCount() != null ? post.getCommentsCount() : 0)
                 .likedByMe(likedByMe)

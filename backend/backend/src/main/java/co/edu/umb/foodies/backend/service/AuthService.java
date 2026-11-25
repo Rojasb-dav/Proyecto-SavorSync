@@ -4,17 +4,20 @@ import co.edu.umb.foodies.backend.dto.request.LoginRequest;
 import co.edu.umb.foodies.backend.dto.request.RegisterRequest;
 import co.edu.umb.foodies.backend.dto.response.AuthResponse;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
-import co.edu.umb.foodies.backend.model.AuthSession;
+import co.edu.umb.foodies.backend.model.ClientSession;
+import co.edu.umb.foodies.backend.model.Employee;
+import co.edu.umb.foodies.backend.model.EmployeeSession;
 import co.edu.umb.foodies.backend.model.PasswordResetToken;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeSessionRepository;
 import co.edu.umb.foodies.backend.repository.PasswordResetTokenRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -24,19 +27,18 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
-import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Service
-@Slf4j
 @RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final AuthSessionRepository authSessionRepository;
+    private final EmployeeRepository employeeRepository;
+    private final ClientSessionRepository clientSessionRepository;
+    private final EmployeeSessionRepository employeeSessionRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
@@ -47,23 +49,17 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest req, HttpServletRequest httpReq) {
-        return buildAuthResponse(createAccount(req, User.Role.foodie), httpReq);
-    }
-
-    @Transactional
-    public UserResponse createModerator(RegisterRequest req) {
-        return UserResponse.from(createAccount(req, User.Role.moderador));
-    }
-
-    private User createAccount(RegisterRequest req, User.Role role) {
-        if (userRepository.existsByEmail(req.getEmail().trim())) {
+        if (userRepository.existsByEmail(req.getEmail().trim()) || employeeRepository.existsByEmail(req.getEmail().trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El correo ya está registrado");
         }
-        if (userRepository.existsByUsername(req.getUsername().trim())) {
+        if (userRepository.existsByUsername(req.getUsername().trim()) || employeeRepository.existsByUsername(req.getUsername().trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
         }
 
+        User.Role role = User.Role.foodie;
+
         User user = User.builder()
+                .id(UUID.randomUUID().toString())
                 .email(req.getEmail().trim())
                 .username(req.getUsername().trim())
                 .password(passwordEncoder.encode(req.getPassword().trim()))
@@ -73,51 +69,100 @@ public class AuthService {
                 .emailVerified(false)
                 .build();
 
-        return userRepository.save(user);
-    }
-
-    @Transactional
-    public AuthResponse login(LoginRequest req, HttpServletRequest httpReq) {
-        User user = userRepository.findByEmailForUpdate(req.getEmail().trim())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas"));
-
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva");
-        }
-
-        if (!passwordEncoder.matches(req.getPassword().trim(), user.getPassword())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
-        }
-
-        String platformHeader = httpReq != null ? httpReq.getHeader("X-Platform") : null;
-        if ("mobile".equalsIgnoreCase(platformHeader) && (user.getRole() == User.Role.restaurant_admin || user.getRole() == User.Role.moderador || user.getRole() == User.Role.admin_sistema)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: Los perfiles de Administrador y Moderador sólo tienen acceso permitido desde la plataforma Web en computador.");
-        }
+        user = userRepository.save(user);
 
         return buildAuthResponse(user, httpReq);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public UserResponse currentUser(String userId) {
-        return userRepository.findById(userId)
-                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
-                .map(UserResponse::from)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida"));
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null) {
+            if (!Boolean.TRUE.equals(user.getIsActive())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
+            return UserResponse.from(user);
+        }
+        Employee employee = employeeRepository.findById(userId).orElse(null);
+        if (employee != null) {
+            if (!Boolean.TRUE.equals(employee.getIsActive())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
+            return UserResponse.from(employee);
+        }
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
+    }
+
+    @Transactional
+    public UserResponse createModerator(RegisterRequest req) {
+        if (userRepository.existsByEmail(req.getEmail().trim()) || employeeRepository.existsByEmail(req.getEmail().trim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El correo ya está registrado");
+        }
+        if (userRepository.existsByUsername(req.getUsername().trim()) || employeeRepository.existsByUsername(req.getUsername().trim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
+        }
+
+        Employee employee = Employee.builder()
+                .id(UUID.randomUUID().toString())
+                .email(req.getEmail().trim())
+                .username(req.getUsername().trim())
+                .password(passwordEncoder.encode(req.getPassword().trim()))
+                .fullName(req.getFullName() != null ? req.getFullName().trim() : req.getUsername().trim())
+                .role(Employee.Role.moderador)
+                .isActive(true)
+                .build();
+
+        employee = employeeRepository.save(employee);
+        return UserResponse.from(employee);
+    }
+
+    @Transactional
+    public AuthResponse login(LoginRequest req, HttpServletRequest httpReq) {
+        User user = userRepository.findByEmail(req.getEmail().trim()).orElse(null);
+        if (user != null) {
+            if (!Boolean.TRUE.equals(user.getIsActive())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva");
+            }
+            if (!passwordEncoder.matches(req.getPassword().trim(), user.getPassword())) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
+            }
+
+            return buildAuthResponse(user, httpReq);
+        }
+
+        Employee employee = employeeRepository.findByEmail(req.getEmail().trim()).orElse(null);
+        if (employee != null) {
+            if (!Boolean.TRUE.equals(employee.getIsActive())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva");
+            }
+            if (!passwordEncoder.matches(req.getPassword().trim(), employee.getPassword())) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
+            }
+
+            String platformHeader = httpReq != null ? httpReq.getHeader("X-Platform") : null;
+            if ("mobile".equalsIgnoreCase(platformHeader)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: Los perfiles de Administrador y Moderador sólo tienen acceso permitido desde la plataforma Web en computador.");
+            }
+
+            return buildEmployeeAuthResponse(employee, httpReq);
+        }
+
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
     }
 
     @Transactional
     public void logout(String token) {
-        authSessionRepository.findBySessionTokenAndIsActiveTrue(jwtUtil.sessionTokenKey(token))
-                .ifPresent(session -> {
-                    session.setIsActive(false);
-                    authSessionRepository.save(session);
-                });
+        if (token == null || token.isBlank()) return;
+        String clean = jwtUtil.sessionTokenKey(token);
+        clientSessionRepository.findBySessionTokenAndIsActiveTrue(clean).ifPresent(s -> {
+            s.setIsActive(false);
+            clientSessionRepository.save(s);
+        });
+        employeeSessionRepository.findBySessionTokenAndIsActiveTrue(clean).ifPresent(s -> {
+            s.setIsActive(false);
+            employeeSessionRepository.save(s);
+        });
     }
 
     @Transactional
     public void forgotPassword(String email) {
         userRepository.findByEmail(email.trim().toLowerCase()).ifPresent(user -> {
-            // FALLO-25 Fix: Generador criptográficamente seguro de 6 dígitos
             String code = String.format("%06d", new SecureRandom().nextInt(900000) + 100000);
             
             try {
@@ -135,7 +180,29 @@ public class AuthService {
 
                 CompletableFuture.runAsync(() -> sendResetEmail(user.getEmail(), code));
             } catch (Exception e) {
-                log.warn("No se pudo registrar la solicitud de recuperación ({})", e.getClass().getSimpleName());
+                System.err.println("WARN: Error en forgotPassword: " + e.getMessage());
+            }
+        });
+
+        employeeRepository.findByEmail(email.trim().toLowerCase()).ifPresent(employee -> {
+            String code = String.format("%06d", new SecureRandom().nextInt(900000) + 100000);
+
+            try {
+                passwordResetTokenRepository.deleteByEmail(employee.getEmail());
+                passwordResetTokenRepository.flush();
+
+                PasswordResetToken resetToken = PasswordResetToken.builder()
+                        .id(UUID.randomUUID().toString())
+                        .email(employee.getEmail())
+                        .code(code)
+                        .expiresAt(LocalDateTime.now().plusMinutes(15))
+                        .build();
+
+                passwordResetTokenRepository.save(resetToken);
+
+                CompletableFuture.runAsync(() -> sendResetEmail(employee.getEmail(), code));
+            } catch (Exception e) {
+                System.err.println("WARN: Error en forgotPassword: " + e.getMessage());
             }
         });
     }
@@ -150,41 +217,81 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El código de verificación ha expirado");
         }
 
-        User user = userRepository.findByEmailForUpdate(email.trim().toLowerCase())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        User user = userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
+        if (user != null) {
+            user.setPassword(passwordEncoder.encode(newPassword.trim()));
+            userRepository.save(user);
 
-        user.setPassword(passwordEncoder.encode(newPassword.trim()));
-        userRepository.save(user);
-        authSessionRepository.revokeAllByUserId(user.getId());
+            clientSessionRepository.findAll().stream()
+                .filter(s -> user.getId().equals(s.getUserId()) && s.getIsActive())
+                .forEach(s -> {
+                    s.setIsActive(false);
+                    clientSessionRepository.save(s);
+                });
+        } else {
+            Employee employee = employeeRepository.findByEmail(email.trim().toLowerCase())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+            employee.setPassword(passwordEncoder.encode(newPassword.trim()));
+            employeeRepository.save(employee);
+
+            employeeSessionRepository.findAll().stream()
+                .filter(s -> employee.getId().equals(s.getEmployeeId()) && s.getIsActive())
+                .forEach(s -> {
+                    s.setIsActive(false);
+                    employeeSessionRepository.save(s);
+                });
+        }
 
         passwordResetTokenRepository.delete(resetToken);
     }
 
     private AuthResponse buildAuthResponse(User user, HttpServletRequest httpReq) {
-        JwtUtil.IssuedToken issued = jwtUtil.issueToken(user.getId(), user.getEmail(), user.getRole().name());
-        String platformHeader = httpReq == null ? null : httpReq.getHeader("X-Platform");
-        AuthSession.Platform platform = "web".equalsIgnoreCase(platformHeader)
-                ? AuthSession.Platform.web_restaurante : AuthSession.Platform.mobile;
-        AuthSession session = AuthSession.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(user.getId())
-                .sessionToken(jwtUtil.sessionTokenKey(issued.token()))
-                .platform(platform)
-                .ipAddress(httpReq == null ? null : httpReq.getRemoteAddr())
-                .isActive(true)
-                .expiresAt(issued.expiresAt())
-                .build();
-        authSessionRepository.saveAndFlush(session);
+        JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(user.getId(), user.getEmail(), user.getRole().name());
 
-        long expiresInMs = Duration.between(Instant.now(), issued.expiresAt()).toMillis();
-        if (expiresInMs <= 0) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "No se pudo iniciar una sesión válida");
+        try {
+            ClientSession session = ClientSession.builder()
+                    .id(UUID.randomUUID().toString())
+                    .userId(user.getId())
+                    .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
+                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
+                    .isActive(true)
+                    .platform(ClientSession.Platform.mobile)
+                    .expiresAt(tokenInfo.expiresAt())
+                    .build();
+
+            clientSessionRepository.save(session);
+        } catch (Exception e) {
+            System.err.println("WARN: No se pudo guardar la sesión de cliente: " + e.getMessage());
         }
+
         return AuthResponse.builder()
-                .token(issued.token())
-                .tokenType("Bearer")
-                .expiresInMs(expiresInMs)
+                .token(tokenInfo.token())
                 .user(UserResponse.from(user))
+                .build();
+    }
+
+    private AuthResponse buildEmployeeAuthResponse(Employee employee, HttpServletRequest httpReq) {
+        JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(employee.getId(), employee.getEmail(), employee.getRole().name());
+
+        try {
+            EmployeeSession session = EmployeeSession.builder()
+                    .id(UUID.randomUUID().toString())
+                    .employeeId(employee.getId())
+                    .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
+                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
+                    .isActive(true)
+                    .platform(EmployeeSession.Platform.web_admin)
+                    .expiresAt(tokenInfo.expiresAt())
+                    .build();
+
+            employeeSessionRepository.save(session);
+        } catch (Exception e) {
+            System.err.println("WARN: No se pudo guardar la sesión de empleado: " + e.getMessage());
+        }
+
+        return AuthResponse.builder()
+                .token(tokenInfo.token())
+                .user(UserResponse.from(employee))
                 .build();
     }
 
@@ -209,7 +316,7 @@ public class AuthService {
             helper.setText(htmlBody, true);
             mailSender.send(message);
         } catch (Exception e) {
-            log.error("No se pudo enviar el correo de recuperación ({})", e.getClass().getSimpleName());
+            System.err.println("ERROR enviando correo SMTP: " + e.getMessage());
         }
     }
 }

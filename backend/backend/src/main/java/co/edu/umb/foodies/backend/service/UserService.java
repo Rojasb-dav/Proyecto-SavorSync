@@ -4,7 +4,7 @@ import co.edu.umb.foodies.backend.dto.request.UpdateProfileRequest;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
 import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +24,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
-    private final AuthSessionRepository authSessionRepository;
+    private final ClientSessionRepository clientSessionRepository;
 
     public List<UserResponse> getAllUsers(String authUserId) {
         return userRepository.findAll().stream()
@@ -95,7 +95,12 @@ public class UserService {
         user.setIsActive(activating);
         User saved = userRepository.save(user);
         if (!activating) {
-            authSessionRepository.revokeAllByUserId(saved.getId());
+            clientSessionRepository.findAll().stream()
+                .filter(s -> saved.getId().equals(s.getUserId()) && s.getIsActive())
+                .forEach(s -> {
+                    s.setIsActive(false);
+                    clientSessionRepository.save(s);
+                });
         }
         return UserResponse.from(saved);
     }

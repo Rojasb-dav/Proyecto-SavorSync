@@ -18,7 +18,7 @@ CREATE TABLE clientes (
   username      VARCHAR(50)   UNIQUE NOT NULL,
   password      VARCHAR(255)  NOT NULL,
   full_name     VARCHAR(100)  NOT NULL,
-  rol           ENUM('foodie','restaurant_admin','moderador','admin_sistema') NOT NULL DEFAULT 'foodie',
+  rol           ENUM('foodie','restaurant_admin') NOT NULL DEFAULT 'foodie',
   avatar_url    VARCHAR(500),
   bio           TEXT,
   phone         VARCHAR(20),

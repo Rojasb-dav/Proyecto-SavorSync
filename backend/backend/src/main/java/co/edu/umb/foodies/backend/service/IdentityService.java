@@ -3,7 +3,7 @@ package co.edu.umb.foodies.backend.service;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
 import co.edu.umb.foodies.backend.model.Pqrs;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
 import co.edu.umb.foodies.backend.repository.PqrsRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,14 +18,13 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class IdentityService {
-
     public static final String RESTAURANT_REQUEST_SUBJECT = "Solicitud de administración de restaurante";
     private static final List<Pqrs.PqrsStatus> OPEN_STATES = List.of(
             Pqrs.PqrsStatus.recibida, Pqrs.PqrsStatus.en_gestion);
 
     private final UserRepository users;
     private final PqrsRepository pqrs;
-    private final AuthSessionRepository sessions;
+    private final ClientSessionRepository sessions;
     private final EmailVerificationService verification;
 
     public void sendVerification(String userId) {
@@ -48,7 +47,8 @@ public class IdentityService {
         requireFoodie(user);
         verification.requireProof(user, code);
         user.setEmailVerified(true);
-        return pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(userId, RESTAURANT_REQUEST_SUBJECT, OPEN_STATES)
+        return pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(
+                        userId, RESTAURANT_REQUEST_SUBJECT, OPEN_STATES)
                 .orElseGet(() -> pqrs.save(Pqrs.builder()
                         .clienteId(userId)
                         .tipo(Pqrs.PqrsType.peticion)
@@ -61,8 +61,10 @@ public class IdentityService {
     @Transactional
     public UserResponse approveRestaurantAdmin(String requestId) {
         var request = pqrs.findByIdForUpdate(requestId)
-                .filter(ticket -> isRestaurantRequest(ticket.getAsunto()) && ticket.getTipo() == Pqrs.PqrsType.peticion)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Solicitud no encontrada"));
+                .filter(ticket -> isRestaurantRequest(ticket.getAsunto())
+                        && ticket.getTipo() == Pqrs.PqrsType.peticion)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Solicitud no encontrada"));
         if (!OPEN_STATES.contains(request.getEstado())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La solicitud ya fue atendida");
         }
@@ -71,8 +73,15 @@ public class IdentityService {
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La cuenta debe verificar su correo");
         }
+
         user.setRole(User.Role.restaurant_admin);
-        sessions.revokeAllByUserId(user.getId());
+
+        sessions.findAll().stream()
+            .filter(s -> user.getId().equals(s.getUserId()) && s.getIsActive())
+            .forEach(s -> {
+                s.setIsActive(false);
+                sessions.save(s);
+            });
 
         var now = LocalDateTime.now();
         request.setEstado(Pqrs.PqrsStatus.resuelta);
@@ -93,14 +102,13 @@ public class IdentityService {
     }
 
     private static void requireActive(User user) {
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw invalidSession();
-        }
+        if (!Boolean.TRUE.equals(user.getIsActive())) throw invalidSession();
     }
 
     private static void requireFoodie(User user) {
         if (user.getRole() != User.Role.foodie) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "La cuenta no es elegible para esta solicitud");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "La cuenta no es elegible para esta solicitud");
         }
     }
 

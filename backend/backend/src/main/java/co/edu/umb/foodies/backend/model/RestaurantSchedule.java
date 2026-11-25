@@ -2,46 +2,38 @@ package co.edu.umb.foodies.backend.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-
-import java.time.Instant;
+import java.time.LocalTime;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "sesiones_cliente")
+@Table(name = "horarios_restaurante")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AuthSession {
-
-    public enum Platform {
-        mobile, web_restaurante
-    }
+public class RestaurantSchedule {
 
     @Id
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "cliente_id", length = 36, nullable = false)
-    private String userId;
+    @Column(name = "restaurante_id", length = 36, nullable = false)
+    private String restaurantId;
 
-    @Column(name = "session_token", nullable = false, length = 191)
-    private String sessionToken;
+    @Column(name = "dia_semana", nullable = false)
+    private Integer dayOfWeek;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "plataforma", nullable = false)
-    private Platform platform;
+    @Column(name = "hora_apertura")
+    private LocalTime openingTime;
 
-    @Column(name = "ip_address", length = 45)
-    private String ipAddress;
+    @Column(name = "hora_cierre")
+    private LocalTime closingTime;
 
-    @Column(name = "expires_at", nullable = false)
-    private Instant expiresAt;
-
-    @Column(name = "activa", nullable = false)
-    private Boolean isActive;
+    @Column(name = "cerrado")
+    @Builder.Default
+    private Boolean isClosed = false;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -52,8 +44,7 @@ public class AuthSession {
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID().toString();
-        if (isActive == null) isActive = true;
-        if (platform == null) platform = Platform.mobile;
+        if (isClosed == null) isClosed = false;
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;

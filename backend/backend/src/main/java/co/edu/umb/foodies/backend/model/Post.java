@@ -5,6 +5,8 @@ import lombok.*;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -26,20 +28,14 @@ public class Post {
     @JoinColumn(name = "cliente_id", nullable = false)
     private User user;
 
-    @Column(name = "nombre_restaurante", nullable = false, length = 150)
-    private String restaurantName;
-
-    @Column(name = "direccion_restaurante", length = 255)
-    private String restaurantAddress;
+    @Column(name = "restaurante_id", length = 36)
+    private String restaurantId;
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String contenido;
 
     @Column(name = "calificacion", nullable = false)
     private Double rating;
-
-    @Column(name = "url_imagen", length = 500)
-    private String imageUrl;
 
     @Column(name = "conteo_likes")
     @Builder.Default
@@ -68,6 +64,10 @@ public class Post {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @OneToMany(mappedBy = "postId", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Builder.Default
+    private List<PostImage> images = new ArrayList<>();
+
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID().toString();
@@ -75,6 +75,7 @@ public class Post {
         if (commentsCount == null) commentsCount = 0;
         if (isPublic == null) isPublic = true;
         if (status == null) status = PostStatus.publicada;
+        if (images == null) images = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;

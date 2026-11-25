@@ -1,11 +1,11 @@
 package co.edu.umb.foodies.backend.dto.response;
 
+import co.edu.umb.foodies.backend.model.Employee;
 import co.edu.umb.foodies.backend.model.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.Hibernate;
 
 import java.time.LocalDateTime;
 
@@ -35,7 +35,23 @@ public class UserResponse {
         return from(u, null);
     }
 
+    public static UserResponse from(Employee e) {
+        if (e == null) return null;
+        return UserResponse.builder()
+                .id(e.getId())
+                .email(e.getEmail())
+                .username(e.getUsername())
+                .fullName(e.getFullName())
+                .role(e.getRole() != null ? e.getRole().name() : null)
+                .isActive(e.getIsActive())
+                .emailVerified(true)
+                .createdAt(e.getCreatedAt())
+                .updatedAt(e.getUpdatedAt())
+                .build();
+    }
+
     public static UserResponse from(User u, String currentUserId) {
+        if (u == null) return null;
         boolean isFollowing = false;
         try {
             if (currentUserId != null && u.getFollowers() != null) {
@@ -61,7 +77,7 @@ public class UserResponse {
         int postsCount = 0;
         try {
             if (u.getPosts() != null) {
-                postsCount = Hibernate.size(u.getPosts());
+                postsCount = u.getPosts().size();
             }
         } catch (Exception ignored) {}
 
