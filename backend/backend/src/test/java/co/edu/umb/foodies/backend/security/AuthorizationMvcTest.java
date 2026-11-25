@@ -11,6 +11,7 @@ import co.edu.umb.foodies.backend.security.jwt.JwtAuthenticationFilter;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import co.edu.umb.foodies.backend.service.UserService;
 import co.edu.umb.foodies.backend.service.PostService;
+import co.edu.umb.foodies.backend.service.CloudinaryAssetRegistry;
 import co.edu.umb.foodies.backend.service.CloudinaryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +52,7 @@ class AuthorizationMvcTest {
     @MockBean private CommentRepository comments;
     @MockBean private PostService postService;
     @MockBean private CloudinaryService cloudinary;
+    @MockBean private CloudinaryAssetRegistry assetRegistry;
     @MockBean private RestaurantImageRepository restaurantImageRepository;
 
     @Test

@@ -58,7 +58,7 @@ public class UserResponse {
                 .fullName(e.getFullName())
                 .role(e.getRole() != null ? e.getRole().name() : null)
                 .isActive(e.getIsActive())
-                .emailVerified(true)
+                .emailVerified(e.getEmailVerified())
                 .createdAt(e.getCreatedAt())
                 .updatedAt(e.getUpdatedAt())
                 .build();
@@ -75,23 +75,17 @@ public class UserResponse {
 
         int followersCount = 0;
         try {
-            if (u.getFollowers() != null) {
-                followersCount = u.getFollowers().size();
-            }
+            if (u.getFollowers() != null) followersCount = u.getFollowers().size();
         } catch (Exception ignored) {}
 
         int followingCount = 0;
         try {
-            if (u.getFollowing() != null) {
-                followingCount = u.getFollowing().size();
-            }
+            if (u.getFollowing() != null) followingCount = u.getFollowing().size();
         } catch (Exception ignored) {}
 
         int postsCount = 0;
         try {
-            if (u.getPosts() != null) {
-                postsCount = u.getPosts().size();
-            }
+            if (u.getPosts() != null) postsCount = u.getPosts().size();
         } catch (Exception ignored) {}
 
         return UserResponse.builder()

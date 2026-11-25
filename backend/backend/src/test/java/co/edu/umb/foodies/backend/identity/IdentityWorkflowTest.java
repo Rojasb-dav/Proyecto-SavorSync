@@ -1,130 +1,129 @@
 package co.edu.umb.foodies.backend.identity;
 
+import co.edu.umb.foodies.backend.controller.PqrsController;
 import co.edu.umb.foodies.backend.model.Pqrs;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.model.ClientSession;
-import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
+import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.PqrsRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
-import co.edu.umb.foodies.backend.service.EmailVerificationService;
+import co.edu.umb.foodies.backend.service.AccountIdentityRegistry;
 import co.edu.umb.foodies.backend.service.IdentityService;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.server.ResponseStatusException;
 
-import org.springframework.mock.web.MockHttpServletRequest;
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class IdentityWorkflowTest {
+
     @Test
     void verifiedFoodieCanCreateOnePendingRestaurantRequest() {
-        User user = foodie();
-        var users = mock(UserRepository.class);
-        var pqrs = mock(PqrsRepository.class);
-        var sessions = mock(ClientSessionRepository.class);
-        var verification = mock(EmailVerificationService.class);
+        User user = foodie(true);
+        UserRepository users = mock(UserRepository.class);
+        PqrsRepository pqrs = mock(PqrsRepository.class);
+        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
+        AccountIdentityRegistry identities = mock(AccountIdentityRegistry.class);
+        when(identities.requestedRole("client", user.getId())).thenReturn("restaurant_admin");
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
         when(pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(
                 eq(user.getId()), eq(IdentityService.RESTAURANT_REQUEST_SUBJECT), any()))
                 .thenReturn(Optional.empty());
         when(pqrs.save(any(Pqrs.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var service = new IdentityService(users, pqrs, sessions, verification);
-        Pqrs created = service.requestRestaurantAdmin(user.getId(), "signed-code", "Request details");
+        IdentityService service = new IdentityService(users, pqrs, sessions, identities);
+        Pqrs created = service.requestRestaurantAdmin(user.getId(), "Request details");
 
         assertEquals(user.getId(), created.getClienteId());
         assertEquals(IdentityService.RESTAURANT_REQUEST_SUBJECT, created.getAsunto());
         assertEquals(Pqrs.PqrsStatus.recibida, created.getEstado());
         assertEquals("Request details", created.getDescripcion());
-        assertTrue(user.getEmailVerified());
-        verify(verification).requireProof(user, "signed-code");
+        assertEquals(User.Role.foodie, user.getRole());
         verify(pqrs).save(any(Pqrs.class));
     }
 
     @Test
-    void restaurantRequestApprovalChangesRoleAndRevokesOldSessions() {
-        User user = foodie();
-        user.setEmailVerified(true);
-        Pqrs request = Pqrs.builder()
-                .id("request-id")
-                .clienteId(user.getId())
-                .tipo(Pqrs.PqrsType.peticion)
-                .asunto(IdentityService.RESTAURANT_REQUEST_SUBJECT)
-                .descripcion("Request")
-                .estado(Pqrs.PqrsStatus.recibida)
-                .build();
-        var users = mock(UserRepository.class);
-        var pqrs = mock(PqrsRepository.class);
-        var sessions = mock(ClientSessionRepository.class);
-        var verification = mock(EmailVerificationService.class);
+    void unverifiedFoodieCannotRequestRestaurantAdminPrivileges() {
+        User user = foodie(false);
+        UserRepository users = mock(UserRepository.class);
+        PqrsRepository pqrs = mock(PqrsRepository.class);
+        when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+
+        assertThrows(ResponseStatusException.class,
+                () -> new IdentityService(users, pqrs, mock(ClientSessionRepository.class),
+                        mock(AccountIdentityRegistry.class))
+                        .requestRestaurantAdmin(user.getId(), "Request details"));
+        verifyNoInteractions(pqrs);
+    }
+
+    @Test
+    void restaurantRequestApprovalChangesRoleAndRevokesOnlyOwnedSessions() {
+        User user = foodie(true);
+        Pqrs request = restaurantRequest(user.getId());
+        UserRepository users = mock(UserRepository.class);
+        PqrsRepository pqrs = mock(PqrsRepository.class);
+        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
+        AccountIdentityRegistry identities = mock(AccountIdentityRegistry.class);
+        when(identities.requestedRole("client", user.getId())).thenReturn("restaurant_admin");
         when(pqrs.findByIdForUpdate("request-id")).thenReturn(Optional.of(request));
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
 
-        ClientSession session = ClientSession.builder().userId(user.getId()).isActive(true).build();
-        when(sessions.findAll()).thenReturn(List.of(session));
-
-        var result = new IdentityService(users, pqrs, sessions, verification)
-                .approveRestaurantAdmin("request-id");
+        var result = new IdentityService(users, pqrs, sessions, identities).approveRestaurantAdmin("request-id");
 
         assertEquals("restaurant_admin", result.getRole());
         assertEquals(Pqrs.PqrsStatus.resuelta, request.getEstado());
         assertNotNull(request.getFechaCierre());
-        verify(sessions).save(session);
-        assertFalse(session.getIsActive());
+        verify(users).save(user);
+        verify(sessions).revokeActiveByUserId(user.getId());
+        verify(sessions, never()).findAll();
     }
 
     @Test
-    void restaurantRequestCannotBeApprovedForInactiveOrAlreadyPromotedAccount() {
-        User user = foodie();
+    void restaurantRequestCannotBeApprovedForAlreadyPromotedAccount() {
+        User user = foodie(true);
         user.setRole(User.Role.restaurant_admin);
-        Pqrs request = Pqrs.builder()
-                .id("request-id")
-                .clienteId(user.getId())
-                .tipo(Pqrs.PqrsType.peticion)
-                .asunto(IdentityService.RESTAURANT_REQUEST_SUBJECT)
-                .descripcion("Request")
-                .estado(Pqrs.PqrsStatus.recibida)
-                .build();
-        var users = mock(UserRepository.class);
-        var pqrs = mock(PqrsRepository.class);
-        var sessions = mock(ClientSessionRepository.class);
-        var verification = mock(EmailVerificationService.class);
-        when(pqrs.findByIdForUpdate("request-id")).thenReturn(Optional.of(request));
+        UserRepository users = mock(UserRepository.class);
+        PqrsRepository pqrs = mock(PqrsRepository.class);
+        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
+        when(pqrs.findByIdForUpdate("request-id")).thenReturn(Optional.of(restaurantRequest(user.getId())));
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
 
         assertThrows(ResponseStatusException.class,
-                () -> new IdentityService(users, pqrs, sessions, verification)
-                        .approveRestaurantAdmin("request-id"));
-        verify(sessions, never()).save(any(ClientSession.class));
+                () -> new IdentityService(users, pqrs, sessions,
+                        mock(AccountIdentityRegistry.class)).approveRestaurantAdmin("request-id"));
+        verify(sessions, never()).revokeActiveByUserId(any());
     }
 
     @Test
     void genericPqrsUpdateCannotCloseRestaurantRoleRequest() {
-        Pqrs request = Pqrs.builder()
+        PqrsRepository pqrs = mock(PqrsRepository.class);
+        when(pqrs.findByIdForUpdate("request-id"))
+                .thenReturn(Optional.of(restaurantRequest("user-id")));
+
+        PqrsController controller = new PqrsController(pqrs, mock(NotificationRepository.class));
+        assertThrows(ResponseStatusException.class,
+                () -> controller.updatePqrsStatus("request-id",
+                        Pqrs.builder().estado(Pqrs.PqrsStatus.resuelta).build(),
+                        new MockHttpServletRequest()));
+    }
+
+    private static Pqrs restaurantRequest(String userId) {
+        return Pqrs.builder()
                 .id("request-id")
-                .clienteId("user-id")
+                .clienteId(userId)
                 .tipo(Pqrs.PqrsType.peticion)
                 .asunto(IdentityService.RESTAURANT_REQUEST_SUBJECT)
                 .descripcion("Request")
                 .estado(Pqrs.PqrsStatus.recibida)
                 .build();
-        var pqrs = mock(PqrsRepository.class);
-        when(pqrs.findByIdForUpdate("request-id")).thenReturn(Optional.of(request));
-
-        var notificationRepo = mock(NotificationRepository.class);
-        var controller = new co.edu.umb.foodies.backend.controller.PqrsController(pqrs, notificationRepo);
-        assertThrows(ResponseStatusException.class,
-                () -> controller.updatePqrsStatus("request-id",
-                        Pqrs.builder().estado(Pqrs.PqrsStatus.resuelta).build(), new MockHttpServletRequest()));
-        assertEquals(Pqrs.PqrsStatus.recibida, request.getEstado());
     }
 
-    private static User foodie() {
+    private static User foodie(boolean verified) {
         return User.builder()
                 .id("user-id")
                 .email("foodie@example.test")
@@ -133,7 +132,7 @@ class IdentityWorkflowTest {
                 .fullName("Foodie")
                 .role(User.Role.foodie)
                 .isActive(true)
-                .emailVerified(false)
+                .emailVerified(verified)
                 .build();
     }
 }

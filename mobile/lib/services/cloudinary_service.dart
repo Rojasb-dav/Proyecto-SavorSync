@@ -1,57 +1,55 @@
-import 'dart:convert';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../core/services/api_service.dart';
 
 class CloudinaryService {
-  static const String cloudName = 'jflzrtvk';
-  static const String uploadPreset = 'foodies_unsigned';
-  static const String uploadUrl = 'https://api.cloudinary.com/v1_1/$cloudName/image/upload';
+  static const int maxUploadBytes = 10 * 1024 * 1024;
 
-  /// Subir una imagen a Cloudinary usando XFile (compatible con Web y Móvil)
-  static Future<String?> uploadImageXFile(XFile xfile) async {
-    try {
-      final bytes = await xfile.readAsBytes();
-      final request = http.MultipartRequest('POST', Uri.parse(uploadUrl))
-        ..fields['upload_preset'] = uploadPreset
-        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: xfile.name));
-
-      final response = await request.send();
-      if (response.statusCode == 200) {
-        final responseData = await response.stream.bytesToString();
-        final json = jsonDecode(responseData) as Map<String, dynamic>;
-        return json['secure_url'] as String?;
-      }
-    } catch (e) {
-      debugPrint('WARN: Reintentando subida de imagen via Backend REST: $e');
+  /// Sends image bytes only to the authenticated Spring API. Cloudinary credentials
+  /// and signatures remain on the server for both Flutter Web and Android.
+  static Future<String> uploadImageXFile(XFile xfile) async {
+    final size = await xfile.length();
+    if (size <= 0) {
+      throw const FormatException('El archivo seleccionado está vacío.');
+    }
+    if (size > maxUploadBytes) {
+      throw const FormatException('La imagen no puede superar 10 MB.');
     }
 
-    // Respaldo seguro a traves del Backend Spring Boot /api/v1/files/upload
+    final bytes = await xfile.readAsBytes();
+    if (bytes.isEmpty || bytes.length > maxUploadBytes) {
+      throw const FormatException('El archivo seleccionado no es válido o excede 10 MB.');
+    }
+
     try {
-      final apiService = ApiService();
-      final bytes = await xfile.readAsBytes();
       final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(bytes, filename: xfile.name),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: xfile.name,
+          contentType: DioMediaType('application', 'octet-stream'),
+        ),
       });
-      final res = await apiService.dio.post('/files/upload', data: formData);
-      return res.data['url'] as String?;
-    } catch (e) {
-      debugPrint('ERROR al subir imagen a Cloudinary y Backend: $e');
-      return null;
+      final response = await ApiService().dio.post('/files/upload', data: formData);
+      final data = response.data;
+      if (data is! Map || data['url'] is! String ||
+          (data['url'] as String).isEmpty || data['publicId'] is! String) {
+        throw const FormatException('El servidor no confirmó la carga de la imagen.');
+      }
+      return data['url'] as String;
+    } on DioException catch (error) {
+      final responseData = error.response?.data;
+      final message = responseData is Map && responseData['message'] is String
+          ? responseData['message'] as String
+          : 'No se pudo subir la imagen. Intenta nuevamente.';
+      throw Exception(message);
     }
   }
 
-  /// Subir múltiples imágenes XFile
   static Future<List<String>> uploadMultipleXFiles(List<XFile> xfiles) async {
-    final List<String> urls = [];
+    final urls = <String>[];
     for (final xfile in xfiles) {
-      final url = await uploadImageXFile(xfile);
-      if (url != null && url.isNotEmpty) {
-        urls.add(url);
-      }
+      urls.add(await uploadImageXFile(xfile));
     }
     return urls;
   }

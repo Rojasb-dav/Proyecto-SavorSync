@@ -18,3 +18,15 @@
 **Flags en Flutter:**
 - `FEATURE_GOOGLE_SIGN_IN` = false
 - `FEATURE_FOODIE_WEB` = false (se usará condicional para portal web de clientes).
+
+## Estado de remediación V3.1 — 2026-11-25
+
+| Funcionalidad | Estado local observado | Alcance de prueba |
+|---|---|---|
+| Registro, login, OTP y restauración JWT | Implementado para Web/Android; sin sesión si no está verificado | Tests locales; falta recorrido con proveedor de correo de prueba |
+| Recuperación de contraseña | DTO, OTP hash, límites, consumo y revocación | Sin MySQL concurrente ni SMTP real |
+| Autorización | ROLE_UNVERIFIED y reglas por método/rol | Pruebas MVC seleccionadas; falta auditoría completa por endpoint |
+| Migraciones | Flyway V1–V5; se conservan 22 tablas originales | MySQL/Docker no disponibles; no desplegado |
+| Archivos Cloudinary | Proxy autenticado, JPEG/PNG, validación y tracking de huérfanos | Tests locales; Cloudinary no ejecutado |
+| Google Sign-In / Firebase Auth | Deshabilitado / no implementado | JWT permanece como sistema de autenticación |
+| WebSockets / FCM | No iniciado | Diferido a P1; no hubo cambios

@@ -28,13 +28,15 @@ class UserServiceSessionTest {
     @Mock private UserRepository users;
     @Mock private NotificationRepository notificationRepository;
     @Mock private ClientSessionRepository clientSessionRepository;
+    @Mock private AccountIdentityRegistry identities;
+    @Mock private CloudinaryAssetRegistry assetRegistry;
 
     private UserService service;
     private User target;
 
     @BeforeEach
     void setUp() {
-        service = new UserService(users, notificationRepository, clientSessionRepository);
+        service = new UserService(users, notificationRepository, clientSessionRepository, identities, assetRegistry);
         target = User.builder()
                 .id(UUID.randomUUID().toString())
                 .role(User.Role.foodie)
@@ -43,20 +45,13 @@ class UserServiceSessionTest {
     }
 
     @Test
-    void suspendingUserRevokesAllSessions() {
+    void suspendingUserRevokesOnlySessionsOwnedByThatUser() {
         when(users.findByIdForUpdate(target.getId())).thenReturn(Optional.of(target));
         when(users.save(target)).thenReturn(target);
-
-        ClientSession s1 = ClientSession.builder().userId(target.getId()).isActive(true).build();
-        ClientSession s2 = ClientSession.builder().userId(target.getId()).isActive(false).build();
-        ClientSession s3 = ClientSession.builder().userId("otro").isActive(true).build();
-
-        when(clientSessionRepository.findAll()).thenReturn(List.of(s1, s2, s3));
 
         service.toggleUserStatus(target.getId());
 
         assertThat(target.getIsActive()).isFalse();
-        assertThat(s1.getIsActive()).isFalse();
-        verify(clientSessionRepository).save(s1);
+        verify(clientSessionRepository).revokeActiveByUserId(target.getId());
     }
 }

@@ -33,6 +33,7 @@ public class PostService {
     private final RestaurantRepository restaurantRepository;
     private final NotificationRepository notificationRepository;
     private final LikeRepository likeRepository;
+    private final CloudinaryAssetRegistry assetRegistry;
 
     @Transactional(readOnly = true)
     public List<PostDTO> getAllPosts(String currentUserId) {
@@ -101,6 +102,9 @@ public class PostService {
         }
 
         post = postRepository.save(post);
+        if (dto.getImageUrl() != null && !dto.getImageUrl().isBlank()) {
+            assetRegistry.attachIfOwned("client", finalUserId, dto.getImageUrl(), "post", post.getId());
+        }
         return convertToDTO(post, finalUserId);
     }
 

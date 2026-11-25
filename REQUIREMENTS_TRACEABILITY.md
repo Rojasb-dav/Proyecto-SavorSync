@@ -27,3 +27,18 @@ Basado en el manual técnico RF01-RF11 y UC-01 al UC-14, RNF-PERF a RNF-LEGAL.
 | RNF-MANT | Mantenibilidad (pruebas automatizadas, DTOs) | En progreso |
 | RNF-PORT | Portabilidad (Android, Web) | En progreso |
 | RNF-LEGAL| Requisitos legales (consentimiento, privacidad) | Pendiente (P1.18) |
+
+## Corte de trazabilidad P0 V3.1 — 2026-11-25
+
+Este corte cubre seguridad e identidad. No declara terminados los RF funcionales ni inicia P1.
+
+| Requerimiento | Trazabilidad actual | Estado |
+|---|---|---|
+| RF01 | Registro, verificación, perfil propio y recuperación bajo Spring Security/JWT; Flutter Web/Android comparte el contrato. | PARCIALMENTE CORREGIDA |
+| RF05 | Solicitud de administración ligada al tipo solicitado y aprobación separada; publicación del restaurante queda pendiente. | PARCIALMENTE CORREGIDA |
+| RF06 | Cuatro autoridades separadas; matriz completa de módulos y empleados internos queda fuera de P0. | PARCIALMENTE CORREGIDA |
+| RF11 | BCrypt, JWT con huella persistida, revocación, verificación y restricciones por rol; sin MySQL ni recorrido real cruzado. | IMPLEMENTADA SIN VERIFICAR |
+| RNF-SEC | Secretos por entorno, CORS explícito, errores sanitizados, OTP/recuperación limitada y upload validado. | IMPLEMENTADA SIN VERIFICAR |
+| RNF-PORT | Flujos Flutter compartidos entre Web/Android sin dart:io en auth/subida. Los builds se reportan separadamente. | IMPLEMENTADA SIN VERIFICAR |
+
+Se conservan las 22 tablas originales. Las migraciones V1–V5 no se ejecutaron en MySQL.

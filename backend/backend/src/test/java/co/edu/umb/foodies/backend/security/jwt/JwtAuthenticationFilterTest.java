@@ -47,7 +47,7 @@ class JwtAuthenticationFilterTest {
     private final EmployeeRepository employees = mock(EmployeeRepository.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final JwtAuthenticationFilter filter =
-            new JwtAuthenticationFilter(jwtUtil, clientSessions, employeeSessions, users, employees);
+            new JwtAuthenticationFilter(jwtUtil, clientSessions, employeeSessions, users, employees, objectMapper);
 
     private final JwtUtil.IssuedToken issued = jwtUtil.issueToken(USER_ID, null, ROLE);
 
@@ -119,6 +119,31 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void unverifiedAccountReceivesOnlyRestrictedAuthority() throws Exception {
+        storeSession(USER_ID, issued.expiresAt());
+        when(users.findById(USER_ID)).thenReturn(Optional.of(
+                User.builder().id(USER_ID).role(User.Role.foodie)
+                        .isActive(true).emailVerified(false).build()));
+        var chain = new MockFilterChain();
+
+        doFilter("GET", PRIVATE_PATH, issued.token(), chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
+                .extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .containsExactly("ROLE_UNVERIFIED");
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void prefixedSimilarAuthPathIsNotTreatedAsPublic() throws Exception {
+        var chain = new MockFilterChain();
+        var response = doFilter("POST", "/api/v1/auth/login-extra", issued.token(), chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chain.getRequest()).isNull();
+    }
+
+    @Test
     void publicRequestWithoutCredentialPassesThrough() throws Exception {
         var chain = new MockFilterChain();
         doFilter("GET", PUBLIC_PATH, null, chain);
@@ -176,6 +201,6 @@ class JwtAuthenticationFilterTest {
     }
 
     private User account(boolean active, User.Role role) {
-        return User.builder().id(USER_ID).isActive(active).role(role).build();
+        return User.builder().id(USER_ID).isActive(active).role(role).emailVerified(true).build();
     }
 }

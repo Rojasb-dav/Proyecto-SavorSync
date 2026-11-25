@@ -14,3 +14,13 @@
 | D10 | Lógicas de reserva, historial de comentarios | Implementar estados básicos transaccionales seguros y retención aprobada. |
 | D11 | Consentimiento y retención | Requerir aceptación de términos explícita, no derivar demografía sin permiso explícito (RF07). |
 | D12 | Sincronización y reportes | Ajustar en P1.13 y P1.17 con WebSockets y exportación real (Apache POI/PDFBox). |
+
+## Decisiones autorizadas para cierre P0 — 2026-11-25
+
+| Decisión | Resolución vigente |
+|---|---|
+| D13 | Correo no verificado no recibe sesión normal; sólo completa verificación o cierra sesión. |
+| D14 | requested_role restaurant_admin se guarda sin privilegios; el rol efectivo cambia tras aprobación de admin_sistema. La publicación del local sigue separada. |
+| D15 | `X-Platform` es metadato declarado, no prueba de dispositivo ni autoridad. |
+| D16 | Google Sign-In sigue deshabilitado. No se introduce Firebase Auth ni se inicia FCM/WebSockets. |
+| D17 | No se migran Aiven ni se cambian servicios remotos. Rotaciones y baseline de esquema existente requieren intervención posterior del propietario.

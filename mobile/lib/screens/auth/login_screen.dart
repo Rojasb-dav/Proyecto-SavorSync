@@ -7,6 +7,7 @@ import '../../core/constants/text_styles.dart';
 import '../../providers/auth_provider.dart';
 import '../shell/role_based_shell.dart';
 import 'forgot_password_screen.dart';
+import 'email_verification_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -77,6 +78,26 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const RoleBasedShell()),
       );
+    } else if (auth.error?.contains('EMAIL_VERIFICATION_REQUIRED') == true) {
+      final started = await auth.beginEmailVerification(_emailController.text.trim());
+      if (!mounted) return;
+      if (started) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => EmailVerificationScreen(
+              email: _emailController.text.trim(),
+              requestedRole: auth.pendingRequestedRole ?? 'foodie',
+            ),
+          ),
+        );
+      } else {
+        _showAuthAlert(
+          title: 'Verificación de correo',
+          message: auth.error ?? 'No se pudo enviar un nuevo código.',
+          icon: Icons.mark_email_unread_outlined,
+          color: AppColors.error,
+        );
+      }
     } else {
       _showAuthAlert(
         title: 'Aviso de Iniciar Sesión',

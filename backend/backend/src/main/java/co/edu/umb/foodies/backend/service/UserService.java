@@ -25,6 +25,8 @@ public class UserService {
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
     private final ClientSessionRepository clientSessionRepository;
+    private final AccountIdentityRegistry identities;
+    private final CloudinaryAssetRegistry assetRegistry;
 
     public List<UserResponse> getAllUsers(String authUserId) {
         return userRepository.findAll().stream()
@@ -55,13 +57,18 @@ public class UserService {
         if (req.getFullName() != null) user.setFullName(req.getFullName());
         if (req.getBio() != null) user.setBio(req.getBio());
         if (req.getPhone() != null) user.setPhone(req.getPhone());
-        if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()) user.setAvatarUrl(req.getAvatarUrl());
+        if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()) {
+            user.setAvatarUrl(req.getAvatarUrl());
+            assetRegistry.attachIfOwned("client", targetId, req.getAvatarUrl(), "profile", targetId);
+        }
 
         if (req.getUsername() != null && !req.getUsername().equals(user.getUsername())) {
-            if (userRepository.existsByUsername(req.getUsername())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
+            String username = req.getUsername().trim();
+            if (userRepository.existsByUsername(username)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "El nombre de usuario ya existe");
             }
-            user.setUsername(req.getUsername());
+            identities.updateUsername("client", targetId, username);
+            user.setUsername(username);
         }
 
         return UserResponse.fromSelf(userRepository.save(user));
@@ -75,6 +82,7 @@ public class UserService {
         User user = userRepository.findByIdForUpdate(targetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         user.setAvatarUrl(avatarUrl);
+        assetRegistry.attachIfOwned("client", targetId, avatarUrl, "profile", targetId);
         return UserResponse.fromSelf(userRepository.save(user));
     }
 
@@ -95,12 +103,7 @@ public class UserService {
         user.setIsActive(activating);
         User saved = userRepository.save(user);
         if (!activating) {
-            clientSessionRepository.findAll().stream()
-                .filter(s -> saved.getId().equals(s.getUserId()) && s.getIsActive())
-                .forEach(s -> {
-                    s.setIsActive(false);
-                    clientSessionRepository.save(s);
-                });
+            clientSessionRepository.revokeActiveByUserId(saved.getId());
         }
         return UserResponse.fromPublic(saved, null);
     }
@@ -108,6 +111,7 @@ public class UserService {
     @Transactional
     public void deleteUser(String targetId) {
         userRepository.deleteById(targetId);
+        identities.delete("client", targetId);
     }
 
     @Transactional

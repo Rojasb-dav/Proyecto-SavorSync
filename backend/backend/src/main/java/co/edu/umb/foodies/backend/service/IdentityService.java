@@ -25,28 +25,18 @@ public class IdentityService {
     private final UserRepository users;
     private final PqrsRepository pqrs;
     private final ClientSessionRepository sessions;
-    private final EmailVerificationService verification;
-
-    public void sendVerification(String userId) {
-        var user = users.findById(userId).orElseThrow(IdentityService::invalidSession);
-        requireActive(user);
-        verification.send(user);
-    }
+    private final AccountIdentityRegistry identities;
 
     @Transactional
-    public UserResponse verifyEmail(String userId, String code) {
-        var user = activeUserForUpdate(userId);
-        verification.requireProof(user, code);
-        user.setEmailVerified(true);
-        return UserResponse.fromSelf(user);
-    }
-
-    @Transactional
-    public Pqrs requestRestaurantAdmin(String userId, String code, String description) {
-        var user = activeUserForUpdate(userId);
+    public Pqrs requestRestaurantAdmin(String userId, String description) {
+        User user = activeUserForUpdate(userId);
         requireFoodie(user);
-        verification.requireProof(user, code);
-        user.setEmailVerified(true);
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Verifica tu correo antes de solicitar permisos de restaurante.");
+        }
+        requireRequestedRestaurantAdmin(userId);
+
         return pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(
                         userId, RESTAURANT_REQUEST_SUBJECT, OPEN_STATES)
                 .orElseGet(() -> pqrs.save(Pqrs.builder()
@@ -60,7 +50,7 @@ public class IdentityService {
 
     @Transactional
     public UserResponse approveRestaurantAdmin(String requestId) {
-        var request = pqrs.findByIdForUpdate(requestId)
+        Pqrs request = pqrs.findByIdForUpdate(requestId)
                 .filter(ticket -> isRestaurantRequest(ticket.getAsunto())
                         && ticket.getTipo() == Pqrs.PqrsType.peticion)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -68,22 +58,20 @@ public class IdentityService {
         if (!OPEN_STATES.contains(request.getEstado())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La solicitud ya fue atendida");
         }
-        var user = activeUserForUpdate(request.getClienteId());
+
+        User user = activeUserForUpdate(request.getClienteId());
         requireFoodie(user);
+        requireRequestedRestaurantAdmin(user.getId());
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "La cuenta debe verificar su correo");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La cuenta debe verificar su correo antes de la aprobación.");
         }
 
         user.setRole(User.Role.restaurant_admin);
+        users.save(user);
+        sessions.revokeActiveByUserId(user.getId());
 
-        sessions.findAll().stream()
-            .filter(s -> user.getId().equals(s.getUserId()) && s.getIsActive())
-            .forEach(s -> {
-                s.setIsActive(false);
-                sessions.save(s);
-            });
-
-        var now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
         request.setEstado(Pqrs.PqrsStatus.resuelta);
         request.setRespuesta("Solicitud aprobada. Vuelve a iniciar sesión desde la aplicación web.");
         request.setFechaGestion(now);
@@ -96,13 +84,20 @@ public class IdentityService {
     }
 
     private User activeUserForUpdate(String userId) {
-        var user = users.findByIdForUpdate(userId).orElseThrow(IdentityService::invalidSession);
+        User user = users.findByIdForUpdate(userId).orElseThrow(IdentityService::invalidSession);
         requireActive(user);
         return user;
     }
 
     private static void requireActive(User user) {
         if (!Boolean.TRUE.equals(user.getIsActive())) throw invalidSession();
+    }
+
+    private void requireRequestedRestaurantAdmin(String userId) {
+        if (!"restaurant_admin".equals(identities.requestedRole("client", userId))) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Esta cuenta no solicitó el tipo de cuenta restaurante.");
+        }
     }
 
     private static void requireFoodie(User user) {

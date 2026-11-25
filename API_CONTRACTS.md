@@ -129,3 +129,21 @@ El cliente de geocodificación del panel y la apertura de rutas en Maps son cone
 - El advice MVC entrega `{timestamp, status, message}` para validación, excepciones con estado y fallas genéricas. El manejador genérico de la copia local usa un mensaje público estable. Razones de excepciones emitidas por controladores aún pueden contener detalles internos. El formato de errores producidos por Spring Security requiere prueba. [GlobalExceptionHandler](backend/backend/src/main/java/co/edu/umb/foodies/backend/controller/GlobalExceptionHandler.java#L18) · [PostController](backend/backend/src/main/java/co/edu/umb/foodies/backend/controller/PostController.java#L152)
 - Flutter mezcla interpretación explícita del error con capturas que devuelven listas vacías o datos aparentes. El interceptor limpia el token frente a cualquier 401, incluidos errores de operaciones de autenticación. [ApiService](mobile/lib/core/services/api_service.dart#L36) · [AuthService Dart](mobile/lib/core/services/auth_service.dart#L123)
 - La fase P1 debe acordar con Flutter los códigos `200`, `201`, `204`, `400`, `401`, `403`, `404`, `409`, `413`, `429`, `500` y `503`, documentar los DTO en OpenAPI y probar los consumidores directos. Los cambios de prefijo, de códigos y de representación quedan pendientes de esa fase. [Gradle backend](backend/backend/build.gradle#L21)
+
+## Contrato vigente V3.1 — 2026-11-25
+
+Esta sección prevalece sobre las tablas históricas V2 anteriores. Flutter Web y Android comparten las rutas Spring bajo `/api/v1`; `X-Platform` describe el cliente y no autoriza por sí solo.
+
+| Método y ruta | Contrato actual | Seguridad / estado |
+|---|---|---|
+| POST `/auth/register` | Entrada `RegisterRequest`; 202 `RegistrationResponse` con `verificationRequired`, `challengeId`, `expiresInMs` y `requestedRole`. No crea sesión. | Público; sólo `foodie` y solicitud `restaurant_admin`. El tipo solicitado se conserva separado del rol efectivo. |
+| POST `/auth/email/verification` | Reenvío validado; 202 `RegistrationResponse`. | Público y limitado por identidad/origen. No devuelve el código. |
+| POST `/auth/email/verify` | `EmailVerificationRequest` con desafío y seis dígitos; AuthResponse sólo tras verificar y persistir sesión. | Público; 400 para inválido/expirado; código de un solo uso. |
+| POST `/auth/login` | Credenciales; 200 AuthResponse con Bearer y expiración positiva. | Cuenta activa y correo verificado; usuario no verificado recibe 403 sin sesión. |
+| POST `/auth/forgot-password` | `ForgotPasswordRequest`; 202 con mensaje genérico. | Público; no confirma si la cuenta existe. |
+| POST `/auth/reset-password` | `ResetPasswordRequest` con email, código y contraseña nueva; 200, 400 si el desafío no es válido. | Código PASSWORD_RESET de un solo uso; revoca sesiones de esa identidad. |
+| POST `/auth/restaurant-admin/request` | Descripción validada; 202 con solicitud PQRS. | ROLE_FOODIE verificado y con tipo solicitado restaurant_admin. Aprobación por admin_sistema; la publicación del establecimiento es un proceso separado. |
+| POST `/auth/restaurant-admin/requests/{id}/approve` | UserResponse. | ROLE_ADMIN_SISTEMA; promociona rol efectivo y revoca sesiones existentes. |
+| POST `/files/upload` | multipart `file`; 201 `{url, publicId}`. | Cuenta activa/verificada; el servidor valida JPEG/PNG, MIME real, ≤10 MiB y ≤12 MP, sube a Cloudinary y registra propietario. El API secret no se incluye en Flutter. |
+
+Errores API tienen `status`, `code`, `message` y `timestamp`; 401, 403, 413, 429 y 503 se conservan diferenciados. Códigos OTP, JWT y secretos no forman parte de las respuestas.

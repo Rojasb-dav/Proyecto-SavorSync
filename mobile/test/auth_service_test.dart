@@ -12,6 +12,7 @@ const _userJson = {
   'username': 'cuenta',
   'role': 'foodie',
   'isActive': true,
+  'emailVerified': true,
 };
 
 void main() {

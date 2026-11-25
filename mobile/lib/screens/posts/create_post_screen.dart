@@ -124,8 +124,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       final user = context.read<AuthProvider>().user;
 
-      final imageUrl = await CloudinaryService.uploadImageXFile(_pickedXFile!) ??
-          'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80';
+      final imageUrl = await CloudinaryService.uploadImageXFile(_pickedXFile!);
 
       final restaurantId = _isManualRestaurant ? null : _selectedRestaurant?.id;
       final fullAddress = '${_addressController.text.trim()} ($_selectedCity)';

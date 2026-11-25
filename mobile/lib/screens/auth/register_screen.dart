@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
@@ -5,7 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../providers/auth_provider.dart';
-import '../shell/role_based_shell.dart';
+import 'email_verification_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -21,6 +23,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
+  String _requestedRole = 'foodie';
 
   @override
   void dispose() {
@@ -74,11 +77,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
       username: _usernameCtrl.text.trim(),
       password: _passwordCtrl.text,
       fullName: _fullNameCtrl.text.trim(),
+      requestedRole: _requestedRole,
     );
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const RoleBasedShell()),
+        MaterialPageRoute(
+          builder: (_) => EmailVerificationScreen(
+            email: _emailCtrl.text.trim(),
+            requestedRole: _requestedRole,
+          ),
+        ),
         (_) => false,
       );
     } else {
@@ -120,8 +129,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 24),
 
                 Text(
-                  'El registro público crea una cuenta de comensal. Si administras un restaurante, verifica tu correo y presenta la solicitud desde tu perfil.',
+                  'Elige tu tipo de cuenta. Las solicitudes de administración de restaurante requieren verificación del correo y aprobación del equipo.',
                   style: AppTextStyles.subtle,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _requestedRole,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de cuenta',
+                    prefixIcon: Icon(Icons.manage_accounts_outlined),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'foodie', child: Text('Comensal')),
+                    DropdownMenuItem(
+                      value: 'restaurant_admin',
+                      child: Text('Administrador de restaurante'),
+                    ),
+                  ],
+                  onChanged: auth.loading
+                      ? null
+                      : (value) => setState(() {
+                            if (value != null) _requestedRole = value;
+                          }),
                 ),
                 const SizedBox(height: 16),
 
@@ -134,8 +163,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       hintText: 'Nombre completo',
                       prefixIcon: Icon(Icons.person_outline_rounded),
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Ingresa tu nombre'
+                    validator: (v) => (v == null || v.trim().isEmpty || v.trim().length > 100)
+                        ? 'Ingresa un nombre de hasta 100 caracteres'
                         : null,
                   ),
                 ),
@@ -149,8 +178,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       hintText: 'Nombre de usuario (@ejemplo)',
                       prefixIcon: Icon(Icons.alternate_email_rounded),
                     ),
-                    validator: (v) => (v == null || v.trim().length < 3)
-                        ? 'Mínimo 3 caracteres'
+                    validator: (v) => (v == null || v.trim().length < 3 || v.trim().length > 50)
+                        ? 'Usa entre 3 y 50 caracteres'
                         : null,
                   ),
                 ),
@@ -165,8 +194,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       hintText: 'Correo electrónico',
                       prefixIcon: Icon(Icons.mail_outline_rounded),
                     ),
-                    validator: (v) =>
-                        (v == null || !v.contains('@')) ? 'Correo inválido' : null,
+                    validator: (v) => (v == null ||
+                            !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(v.trim()) ||
+                            v.trim().length > 191)
+                        ? 'Correo inválido'
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -185,8 +217,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         onPressed: () => setState(() => _obscure = !_obscure),
                       ),
                     ),
-                    validator: (v) =>
-                        (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
+                    validator: (v) {
+                      if (v == null || v.length < 8 || v.length > 100) {
+                        return 'Usa entre 8 y 100 caracteres';
+                      }
+                      if (utf8.encode(v).length > 72) {
+                        return 'La contraseña excede el límite seguro admitido';
+                      }
+                      return null;
+                    },
                   ),
                 ),
                 const SizedBox(height: 24),

@@ -112,4 +112,21 @@ Los ajustes de Flutter ocultan controles de borrado que el rol ya no puede usar 
 
 **Commit asociado.** Cambios locales en la rama de remediación. El próximo punto es P0.4, sujeto a autorización.
 
+## Actualización autorizada V3.1 — 2026-11-25
+
+Este addendum es el estado vigente para la rama `fix/savorsync-remediation-v3`, con base `39399448b6c9a0e93157d52870b763483b0a86ab`. Las secciones V2 anteriores se conservan como historial y sus referencias a `main`, V2, resultados y estados no describen esta ejecución. No se inició P1.
+
+| Tarea | Estado V3.1 | Evidencia y límite |
+|---|---|---|
+| P0.1 | IMPLEMENTADA SIN VERIFICAR | Secretos por variables, seeder sólo `development & !production`, opt-in y contraseña requerida. Pruebas de configuración. Rotación de valores previamente expuestos requiere acción del propietario. |
+| P0.2 | IMPLEMENTADA SIN VERIFICAR | Huella de JWT, sesión SQL antes de respuesta, validación de cuenta/rol/expiración, roles cliente/empleado, logout y revocación por titular. Pruebas unitarias; recorridos reales Web/Android y MySQL pendientes. |
+| P0.3 | PARCIALMENTE CORREGIDA | ROLE_UNVERIFIED no obtiene rutas protegidas, reglas HTTP exactas y pruebas MVC seleccionadas. No se probó la matriz completa de controladores y roles con MySQL. |
+| P0.4 | IMPLEMENTADA SIN VERIFICAR | OTP de seis dígitos, perfil no verificado sin sesión, desafío de un uso, selección de rol persistida y aprobación de restaurant_admin separada. Faltan MySQL y SMTP de prueba. |
+| P0.5 | PARCIALMENTE CORREGIDA | Flyway y V1–V5 aditivas/no destructivas incorporadas; ddl-auto=validate. No hay MySQL/Docker local para ejecutar migraciones ni validar mapeos y datos. No se contactó Aiven. |
+| P0.6 | IMPLEMENTADA SIN VERIFICAR | CORS por lista explícita, errores JSON sanitizados y TLS documentado. No se inspeccionaron Render, Vercel ni Aiven; CORS no es control para clientes nativos. |
+| P0.7 | IMPLEMENTADA SIN VERIFICAR | DTO validados, BCrypt, límites durables, consumo bloqueado, propósito separado, revocación y correo después del commit. No se validó concurrencia contra MySQL ni SMTP real. |
+| P0.8 | IMPLEMENTADA SIN VERIFICAR | Proxy autenticado, JPEG/PNG binario, tamaño/resolución, tracking aditivo de huérfanos y eliminación unsigned en Flutter. Cloudinary y selector/cámara/galería no se ejecutaron. |
+
+V1 reconstruye las 22 tablas originales sólo en una base vacía. Una base existente requiere respaldo y cotejo; no hay baseline automático ni migración de producción.
+
 

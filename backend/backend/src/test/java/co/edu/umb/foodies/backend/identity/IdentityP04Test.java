@@ -2,7 +2,6 @@ package co.edu.umb.foodies.backend.identity;
 
 import co.edu.umb.foodies.backend.dto.request.RegisterRequest;
 import co.edu.umb.foodies.backend.dto.request.UpdateProfileRequest;
-import co.edu.umb.foodies.backend.model.ClientSession;
 import co.edu.umb.foodies.backend.model.User;
 import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
 import co.edu.umb.foodies.backend.repository.EmployeeRepository;
@@ -10,26 +9,24 @@ import co.edu.umb.foodies.backend.repository.EmployeeSessionRepository;
 import co.edu.umb.foodies.backend.repository.PasswordResetTokenRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
+import co.edu.umb.foodies.backend.service.AccountIdentityRegistry;
 import co.edu.umb.foodies.backend.service.AuthService;
 import co.edu.umb.foodies.backend.service.EmailVerificationService;
-import co.edu.umb.foodies.backend.service.IdentityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Instant;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class IdentityP04Test {
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
@@ -42,97 +39,72 @@ class IdentityP04Test {
     }
 
     @Test
-    void publicRegistrationIgnoresPrivilegedRoleAndCreatesFoodie() throws Exception {
+    void publicRegistrationRejectsPrivilegedRoleInsteadOfTrustingTheRequest() throws Exception {
         RegisterRequest request = objectMapper.readValue("""
-                {"email":"foodie@example.test","username":"foodie1","password":"secret1",
+                {"email":"foodie@example.test","username":"foodie1","password":"secret-1",
                  "fullName":"Foodie","role":"admin_sistema"}
                 """, RegisterRequest.class);
+        AuthService service = authService(
+                mock(UserRepository.class),
+                mock(EmployeeRepository.class),
+                mock(ClientSessionRepository.class),
+                mock(EmployeeSessionRepository.class),
+                mock(PasswordResetTokenRepository.class),
+                mock(AccountIdentityRegistry.class),
+                mock(PasswordEncoder.class),
+                mock(EmailVerificationService.class));
 
-        UserRepository users = mock(UserRepository.class);
-        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
-        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
-        EmployeeSessionRepository employeeSessionRepository = mock(EmployeeSessionRepository.class);
-        PasswordResetTokenRepository resets = mock(PasswordResetTokenRepository.class);
-        PasswordEncoder passwords = mock(PasswordEncoder.class);
-        JwtUtil jwt = mock(JwtUtil.class);
-        JavaMailSender mail = mock(JavaMailSender.class);
-        HttpServletRequest http = mock(HttpServletRequest.class);
-
-        when(users.existsByEmail("foodie@example.test")).thenReturn(false);
-        when(users.existsByUsername("foodie1")).thenReturn(false);
-        when(passwords.encode("secret1")).thenReturn("encoded");
-        when(users.save(any(User.class))).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId("foodie-id");
-            return user;
-        });
-        when(jwt.issueToken("foodie-id", "foodie@example.test", "foodie"))
-                .thenReturn(new JwtUtil.IssuedToken("signed", Instant.now().plusSeconds(3600)));
-        when(jwt.sessionTokenKey("signed")).thenReturn("v1:hash");
-        when(http.getHeader("X-Platform")).thenReturn("web");
-
-        AuthService service = new AuthService(users, employeeRepository, sessions, employeeSessionRepository, resets, passwords, jwt, mail);
-        var response = service.register(request, http);
-
-        assertEquals("foodie", response.getUser().getRole());
-        assertEquals("Bearer", response.getTokenType());
-        verify(sessions).saveAndFlush(any(ClientSession.class));
-        verify(users).save(argThat(user -> user.getRole() == User.Role.foodie
-                && Boolean.FALSE.equals(user.getEmailVerified())));
+        assertThrows(ResponseStatusException.class,
+                () -> service.register(request, null));
     }
 
     @Test
-    void moderatorCreationDoesNotReplaceAdministratorSession() throws Exception {
+    void restaurantAdminSelectionRegistersFoodieAndWaitsForVerification() throws Exception {
         RegisterRequest request = objectMapper.readValue("""
-                {"email":"moderator@example.test","username":"moderator1","password":"secret1",
-                 "fullName":"Moderator"}
+                {"email":"foodie@example.test","username":"foodie1","password":"secret-1",
+                 "fullName":"Foodie","role":"restaurant_admin"}
                 """, RegisterRequest.class);
 
         UserRepository users = mock(UserRepository.class);
-        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
-        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
-        EmployeeSessionRepository employeeSessionRepository = mock(EmployeeSessionRepository.class);
-        PasswordResetTokenRepository resets = mock(PasswordResetTokenRepository.class);
+        EmployeeRepository employees = mock(EmployeeRepository.class);
+        AccountIdentityRegistry identities = mock(AccountIdentityRegistry.class);
         PasswordEncoder passwords = mock(PasswordEncoder.class);
-        JwtUtil jwt = mock(JwtUtil.class);
-        JavaMailSender mail = mock(JavaMailSender.class);
-        when(users.existsByEmail("moderator@example.test")).thenReturn(false);
-        when(users.existsByUsername("moderator1")).thenReturn(false);
-        when(passwords.encode("secret1")).thenReturn("encoded");
-        when(employeeRepository.save(any(co.edu.umb.foodies.backend.model.Employee.class))).thenAnswer(invocation -> {
-            co.edu.umb.foodies.backend.model.Employee user = invocation.getArgument(0);
-            user.setId("moderator-id");
-            return user;
-        });
+        EmailVerificationService challenges = mock(EmailVerificationService.class);
+        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
+        when(users.existsByEmail("foodie@example.test")).thenReturn(false);
+        when(employees.existsByEmail("foodie@example.test")).thenReturn(false);
+        when(users.existsByUsername("foodie1")).thenReturn(false);
+        when(employees.existsByUsername("foodie1")).thenReturn(false);
+        when(passwords.encode("secret-1")).thenReturn("encoded");
+        when(users.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(challenges.issue(any(), any(), any(), any(), any()))
+                .thenReturn(new EmailVerificationService.IssuedChallenge("challenge-1", 900_000));
 
-        var result = new AuthService(users, employeeRepository, sessions, employeeSessionRepository, resets, passwords, jwt, mail)
-                .createModerator(request);
+        var response = authService(users, employees, sessions,
+                mock(EmployeeSessionRepository.class), mock(PasswordResetTokenRepository.class),
+                identities, passwords, challenges).register(request, null);
 
-        assertEquals("moderador", result.getRole());
-        verify(sessions, never()).saveAndFlush(any(ClientSession.class));
+        assertEquals("restaurant_admin", response.requestedRole());
+        assertTrue(response.verificationRequired());
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(users).saveAndFlush(saved.capture());
+        assertEquals(User.Role.foodie, saved.getValue().getRole());
+        assertFalse(saved.getValue().getEmailVerified());
+        verifyNoInteractions(sessions);
     }
 
-    @Test
-    void emailVerificationAcceptsOnlyTheSignedUnexpiredCode() {
-        JavaMailSender mail = mock(JavaMailSender.class);
-        var service = new EmailVerificationService(mail, "0123456789abcdef0123456789abcdef",
-                "no-reply@example.test");
-        var user = User.builder().id("user-1").email("user@example.test")
-                .username("user1").password("hash").fullName("User")
-                .role(User.Role.foodie).isActive(true).emailVerified(false).build();
-
-        service.send(user);
-        var message = org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mail).send(message.capture());
-        Matcher matcher = Pattern.compile("[0-9]{10}\\.[A-Za-z0-9_-]{22}")
-                .matcher(message.getValue().getText());
-        assertTrue(matcher.find());
-        String code = matcher.group();
-
-        assertDoesNotThrow(() -> service.requireProof(user, code));
-        assertThrows(ResponseStatusException.class, () -> service.requireProof(user, "invalid"));
-        assertThrows(ResponseStatusException.class, () -> service.requireProof(
-                User.builder().id("other-user").email("user@example.test").build(), code));
-        assertThrows(ResponseStatusException.class, () -> service.send(user));
+    private static AuthService authService(
+            UserRepository users,
+            EmployeeRepository employees,
+            ClientSessionRepository clientSessions,
+            EmployeeSessionRepository employeeSessions,
+            PasswordResetTokenRepository resetTokens,
+            AccountIdentityRegistry identities,
+            PasswordEncoder passwords,
+            EmailVerificationService challenges) {
+        return new AuthService(users, employees, clientSessions, employeeSessions,
+                resetTokens, identities, passwords,
+                new JwtUtil("0123456789abcdef0123456789abcdef", 60_000),
+                challenges);
     }
 }

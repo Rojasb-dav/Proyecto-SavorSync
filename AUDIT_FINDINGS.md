@@ -108,3 +108,17 @@ El cierre revoca la sesión corriente. La suspensión y el cambio de contraseña
 
 **PARCIALMENTE CORREGIDA.** Spring comprueba roles y titularidad en las rutas sensibles. PQRS queda fuera de las rutas públicas, las consultas de notificaciones y reservas personales se acotan al titular y la administración de menús y reservas se acota al propietario. Las escrituras sociales obtienen su autor de la sesión. Las pruebas HTTP y MySQL confirmaron los controles cubiertos. La compatibilidad funcional en dispositivos y el cotejo del alcance de moderación siguen pendientes. [TEST_REPORT.md](TEST_REPORT.md).
 
+## Reconciliación con la iteración V3.1 — 2026-11-25
+
+Los hallazgos FALLO-01–55 anteriores describen una auditoría V2 y se conservan sin reescribir. El árbol actual parte de `39399448b6c9a0e93157d52870b763483b0a86ab` en `fix/savorsync-remediation-v3`; los estados históricos no son evidencia de esta iteración.
+
+| Discrepancia documental | Estado observado en código V3.1 |
+|---|---|
+| Este informe declara rama `main` y base `8a9101e…`; el informe de pruebas declara otra base y 48 errores. | Son antecedentes V2. La rama/HEAD actuales están indicados arriba; la ejecución actual figura en TEST_REPORT.md. |
+| El informe histórico indica que P0.4–P0.8 no se implementaron. | En V3.1 hay cambios locales en identidad, OTP, recuperación, Flyway, CORS, archivos y Flutter. El grado de verificación individual está en REMEDIATION_PLAN.md y P0_AUDIT_HANDOFF.md. |
+| El inventario anterior dice que no hay Flyway y que sólo hay un SQL destructivo. | Ahora hay Flyway y V1–V5. V1 conserva 22 tablas y triggers sin DROP/CREATE DATABASE. Las migraciones no se ejecutaron porque no hay MySQL/Docker local. |
+| El contrato previo dice registro 200 con AuthResponse, CORS con patrones amplios y upload unsigned. | El código actual registra con 202 sin JWT, usa orígenes CORS explícitos y procesa cargas en Spring con credenciales sólo del servidor. Véase API_CONTRACTS.md. |
+| El reporte V2 afirmaba que el esquema y MySQL quedaron completamente verificados. | En esta ejecución no se abrió MySQL local ni Aiven; esa afirmación no se puede trasladar a V3.1. |
+
+El repositorio no define los identificadores `V3-01`–`V3-07` en documentos ni código. Se registran sin asignarles causas inventadas; la correspondencia con el informe externo de auditoría queda pendiente. No se constató regresión de producción ni se ejecutó sobre un servicio remoto.
+

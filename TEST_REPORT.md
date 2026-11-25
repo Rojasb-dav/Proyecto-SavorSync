@@ -55,3 +55,35 @@ Tras actualizar la estructura de mocks en `AuthServiceSessionTest` para usar `Cl
 - Se evaluó e inspeccionó detalladamente `schema_foodies_db.sql`.
 - **Verificación Completa:** Se verificó que las 22 tablas exactas del modelo relacional original, referenciadas en las secciones 1 al 20, se mantienen activas y fieles a su integridad SQL (UUID de IDs, llaves foráneas y tipos restringidos como enums para campos controlados de estados, notificaciones, menús y PQR).
 - **Control de Flyway:** Se instauró un nuevo directorio `db/migration` dentro de recursos en preparación a futuros despliegues aditivos y control automático del esquema sin perder datos históricos. La tabla faltante `tokens_recuperacion` ya forma parte del esquema formal.
+
+---
+
+## Ejecución V3.1 — 2026-11-25 (se conserva el informe histórico anterior)
+
+Rama `fix/savorsync-remediation-v3`; base `39399448b6c9a0e93157d52870b763483b0a86ab`. Los resultados V2 (main, SHA distinto y 38/48 pruebas) no describen esta corrida.
+
+### Backend
+
+| Comando | Resultado |
+|---|---|
+| `gradlew.bat test --no-daemon --rerun-tasks` | Exit 0; 52 tests, 50 aprobados, 0 fallidos, 2 omitidos. Los omitidos corresponden a `SessionMySqlTest`; no se dispone de MySQL/Docker. |
+| `gradlew.bat build --no-daemon` | Exit 0; build exitoso. Gradle Wrapper 9.4.1 y Java Toolchain 17. |
+| `gradlew.bat clean test --no-daemon` | No llegó a ejecutar tests: `:clean` falló al borrar `backend/backend/build` por archivos bloqueados/abiertos por Windows. No se forzó el borrado. La suite separada anterior sí pasó. |
+
+### Flutter
+
+| Comando | Resultado |
+|---|---|
+| `flutter doctor -v` | Flutter 3.41.9, Dart 3.11.5, Android SDK 37 y Chrome disponibles. Licencias Android aparecen como desconocidas/no aceptadas. |
+| `flutter pub get` | Exit 0. 73 paquetes tienen versiones posteriores fuera de los rangos declarados; no se actualizaron indiscriminadamente. |
+| `flutter analyze` | Exit 1 con 16 avisos `info` (deprecaciones, const y async context); 0 errores de análisis reportados. Se corrigió el aviso del dropdown modificado en registro; los restantes están en pantallas preexistentes. |
+| `flutter test` | Exit 0; 8/8 tests aprobados. |
+| `flutter build web --release` | Exit 0; generado `mobile/build/web`. |
+| `flutter build apk --debug` | Exit 0; generado `mobile/build/app/outputs/flutter-apk/app-debug.apk`. |
+| `flutter build apk --release` | No ejecutado: no hay firma release autorizada/configurada y la configuración histórica usa la firma debug. |
+
+Las pruebas de archivo nuevas validan PNG permitido, vacío, corrupto, MIME discordante, tamaño mayor de 10 MiB y ausencia de autenticación. No prueban proveedor Cloudinary real ni cámara/galería en un dispositivo.
+
+### Límites de verificación
+
+MySQL y Docker no están disponibles para esta sesión. No se ejecutaron V1–V5, no se probó el baseline sobre una copia de las 22 tablas, no se validó Hibernate contra MySQL y no se usó Aiven. No se desplegó ni se conectó a Render, Vercel, Cloudinary o SMTP real. No se completó prueba E2E Web/Android; el build no prueba permisos, CORS desplegado ni entrega de correo.

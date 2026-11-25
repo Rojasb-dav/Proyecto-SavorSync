@@ -37,6 +37,10 @@ public class JwtUtil {
     }
 
     public IssuedToken issueToken(String userId, String email, String role) {
+        return issueToken(userId, email, role, "client");
+    }
+
+    public IssuedToken issueToken(String userId, String email, String role, String accountType) {
         Instant issuedAt = Instant.now();
         Instant expiresAt = issuedAt.plusMillis(expirationMs).truncatedTo(ChronoUnit.SECONDS);
         String token = Jwts.builder()
@@ -45,6 +49,7 @@ public class JwtUtil {
                 .claim("userId", userId)
                 .claim("email", email)
                 .claim("role", role)
+                .claim("accountType", accountType)
                 .setIssuedAt(Date.from(issuedAt))
                 .setExpiration(Date.from(expiresAt))
                 .signWith(key, SignatureAlgorithm.HS256)

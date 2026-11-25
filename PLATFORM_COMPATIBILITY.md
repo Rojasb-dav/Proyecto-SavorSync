@@ -59,4 +59,12 @@ El manifiesto web referencia recursos con `Icon-192.png` y `Icon-512.png`. Los a
 | Publicaciones, reservas, menús, PQRS, perfil, favoritos, notificaciones y persistencia cruzada | PENDIENTE de completar el gate de seguridad y probar contra la misma base de pruebas. |
 | Firma Android de distribución | PENDIENTE de clave de release autorizada y huellas de OAuth correspondientes. |
 | iOS | PENDIENTE de confirmación de alcance y entorno macOS. |
+
+## Actualización Web y Android V3.1 — 2026-11-25
+
+- El flujo correo/código usa widgets y servicios Flutter compartidos. Registro queda sin sesión hasta confirmación Spring; verificación requiere seis dígitos y navega según rol efectivo devuelto.
+- La plataforma usa `kIsWeb` en código compartido. Dio envía `X-Platform: web` o `mobile`; Spring lo guarda como metadato. Roles, identidad y titularidad se verifican con el JWT.
+- Se retiraron subidas directas unsigned, configuración Cloudinary hardcodeada y URLs de respaldo falsas. `XFile` se valida por tamaño y se carga al backend como bytes; el backend valida contenido binario y controla el proveedor.
+- Google Sign-In permanece deshabilitado. No se agregó Firebase Auth; JWT de Spring continúa como autoridad.
+- La revisión es estática. Builds, tests, selector web, cámara y galería se informan por separado en TEST_REPORT.md. CORS no es una barrera para clientes Android.
 | Configuración publicada de Aiven, Render, Vercel, Cloudinary y Google | PENDIENTE de acceso autorizado o de evidencias del propietario. |
