@@ -44,8 +44,9 @@ public class Pqrs {
     private String descripcion;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado", nullable = false)
-    private PqrsStatus estado;
+    @Column(name = "estado")
+    @Builder.Default
+    private PqrsStatus estado = PqrsStatus.recibida;
 
     @Column(name = "respuesta", columnDefinition = "TEXT")
     private String respuesta;
@@ -65,7 +66,6 @@ public class Pqrs {
     @PrePersist
     public void prePersist() {
         if (id == null) id = UUID.randomUUID().toString();
-        if (tipo == null) tipo = PqrsType.peticion;
         if (estado == null) estado = PqrsStatus.recibida;
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
