@@ -20,7 +20,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  String _selectedRole = 'foodie';
   bool _obscure = true;
 
   @override
@@ -32,6 +31,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  void _showAuthAlert({
+    required String title,
+    required String message,
+    IconData icon = Icons.info_outline_rounded,
+    Color color = AppColors.primary,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title, style: AppTextStyles.title.copyWith(fontSize: 18))),
+          ],
+        ),
+        content: Text(
+          message,
+          style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Entendido', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
@@ -40,7 +74,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       username: _usernameCtrl.text.trim(),
       password: _passwordCtrl.text,
       fullName: _fullNameCtrl.text.trim(),
-      role: _selectedRole,
     );
     if (!mounted) return;
     if (ok) {
@@ -49,11 +82,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         (_) => false,
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.error,
-          content: Text(auth.error ?? 'No se pudo completar el registro'),
-        ),
+      _showAuthAlert(
+        title: 'Aviso de Registro',
+        message: auth.error ?? 'No se pudo completar el registro. Verifica los datos ingresados.',
+        icon: Icons.person_add_disabled_rounded,
+        color: AppColors.error,
       );
     }
   }
@@ -86,50 +119,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ).animate(delay: 80.ms).fadeIn(duration: 400.ms),
                 const SizedBox(height: 24),
 
-                // Selector de Rol de Usuario (SÓLO PERFILES PÚBLICOS)
-                Text('Tipo de Perfil / Rol *', style: AppTextStyles.caption.copyWith(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 8),
-                _animated(
-                  delay: 100,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedRole,
-                        isExpanded: true,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'foodie',
-                            child: Row(
-                              children: [
-                                Icon(Icons.restaurant_rounded, color: AppColors.primary, size: 20),
-                                SizedBox(width: 10),
-                                Text('Foodie / Comensal 🥑'),
-                              ],
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'restaurant_admin',
-                            child: Row(
-                              children: [
-                                Icon(Icons.storefront_rounded, color: Colors.orange, size: 20),
-                                SizedBox(width: 10),
-                                Text('Administrador de Restaurante 🏪'),
-                              ],
-                            ),
-                          ),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) setState(() => _selectedRole = val);
-                        },
-                      ),
-                    ),
-                  ),
+                Text(
+                  'El registro público crea una cuenta de comensal. Si administras un restaurante, verifica tu correo y presenta la solicitud desde tu perfil.',
+                  style: AppTextStyles.subtle,
                 ),
                 const SizedBox(height: 16),
 

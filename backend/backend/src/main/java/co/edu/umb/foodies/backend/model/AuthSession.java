@@ -3,6 +3,7 @@ package co.edu.umb.foodies.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -37,7 +38,7 @@ public class AuthSession {
     private String ipAddress;
 
     @Column(name = "expires_at", nullable = false)
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     @Column(name = "activa", nullable = false)
     private Boolean isActive;

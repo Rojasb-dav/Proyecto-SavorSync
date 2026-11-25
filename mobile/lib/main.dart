@@ -8,6 +8,7 @@ import 'core/constants/text_styles.dart';
 import 'core/services/api_service.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
+import 'screens/auth/login_screen.dart';
 import 'screens/splash/splash_screen.dart';
 
 void main() async {
@@ -21,8 +22,15 @@ void main() async {
   runApp(const SavorSyncApp());
 }
 
-class SavorSyncApp extends StatelessWidget {
+class SavorSyncApp extends StatefulWidget {
   const SavorSyncApp({super.key});
+
+  @override
+  State<SavorSyncApp> createState() => _SavorSyncAppState();
+}
+
+class _SavorSyncAppState extends State<SavorSyncApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +42,19 @@ class SavorSyncApp extends StatelessWidget {
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
           ApiService().onUnauthorized = () {
+            if (!context.mounted) return;
             final auth = context.read<AuthProvider>();
+            if (auth.status != AuthStatus.authenticated) return;
+
             auth.forceLogout();
+            _navigatorKey.currentState?.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+              (_) => false,
+            );
           };
 
           return MaterialApp(
+            navigatorKey: _navigatorKey,
             title: 'SavorSync',
             debugShowCheckedModeBanner: false,
             theme: _buildTheme(Brightness.light),

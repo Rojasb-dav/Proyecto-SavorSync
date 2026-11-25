@@ -1,0 +1,9 @@
+**/.git
+**/.env*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.jks
+**/*.keystore
+**/.gradle
+**/build

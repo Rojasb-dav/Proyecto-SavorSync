@@ -1,5 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/auth_provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
@@ -73,6 +76,7 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
   }
 
   void _showInspectModal(BuildContext context, RestaurantModel r) {
+    final canDelete = context.read<AuthProvider>().user?.role == 'admin_sistema';
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -140,7 +144,7 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Cerrar'),
           ),
-          IconButton(
+          if (canDelete) IconButton(
             icon: const Icon(Icons.delete_forever_rounded, color: AppColors.error),
             tooltip: 'Eliminar Local Definitivamente',
             onPressed: () {
@@ -183,6 +187,7 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canDelete = context.watch<AuthProvider>().user?.role == 'admin_sistema';
     return Scaffold(
       appBar: AppBar(
         title: const Text('Aprobación y Gobierno de Restaurantes'),
@@ -236,7 +241,7 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
                               label: const Text('Ver Ficha 🔍', style: TextStyle(fontSize: 12)),
                             ),
                             const SizedBox(width: 8),
-                            IconButton(
+                            if (canDelete) IconButton(
                               icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
                               tooltip: 'Eliminar Restaurante Definitivamente',
                               onPressed: () => _deleteRestaurant(r),

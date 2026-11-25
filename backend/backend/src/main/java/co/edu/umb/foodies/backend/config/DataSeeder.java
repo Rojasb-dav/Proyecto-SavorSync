@@ -5,23 +5,30 @@ import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Profile("development & !production & !test")
+@ConditionalOnProperty(name = "app.seed.moderator-enabled", havingValue = "true")
 @RequiredArgsConstructor
 public class DataSeeder implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.seed.moderator-password:Moderador2025!}")
+    @Value("${app.seed.moderator-password}")
     private String moderatorPassword;
 
     @Override
     @Transactional
     public void run(String... args) {
+        if (moderatorPassword.isBlank()) {
+            throw new IllegalStateException("La contraseña del moderador de desarrollo es obligatoria");
+        }
         if (!userRepository.existsByEmail("moderador@savorsync.com")) {
             User moderador = User.builder()
                     .email("moderador@savorsync.com")
@@ -35,7 +42,6 @@ public class DataSeeder implements CommandLineRunner {
                     .build();
 
             userRepository.save(moderador);
-            System.out.println("SEEDER: Usuario Moderador inicializado de forma segura.");
         }
     }
 }

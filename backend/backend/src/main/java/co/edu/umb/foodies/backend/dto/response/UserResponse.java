@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.Hibernate;
 
 import java.time.LocalDateTime;
 
@@ -60,7 +61,7 @@ public class UserResponse {
         int postsCount = 0;
         try {
             if (u.getPosts() != null) {
-                postsCount = u.getPosts().size();
+                postsCount = Hibernate.size(u.getPosts());
             }
         } catch (Exception ignored) {}
 

@@ -2,7 +2,6 @@ package co.edu.umb.foodies.backend.controller;
 
 import co.edu.umb.foodies.backend.dto.request.UpdateProfileRequest;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
-import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import co.edu.umb.foodies.backend.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -19,24 +18,25 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
-    private final JwtUtil jwtUtil;
 
     @GetMapping
     public ResponseEntity<List<UserResponse>> getAllUsers(HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        return ResponseEntity.ok(userService.getAllUsers(authUserId));
+        return ResponseEntity.ok(userService.getAllUsers(authUserId).stream()
+                .map(user -> visibleProfile(user, authUserId, request.isUserInRole("ADMIN_SISTEMA")))
+                .toList());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getById(@PathVariable String id, HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        return ResponseEntity.ok(userService.getById(id, authUserId));
+        return ResponseEntity.ok(visibleProfile(userService.getById(id, authUserId), authUserId, false));
     }
 
     @GetMapping("/username/{username}")
     public ResponseEntity<UserResponse> getByUsername(@PathVariable String username, HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        return ResponseEntity.ok(userService.getByUsername(username, authUserId));
+        return ResponseEntity.ok(visibleProfile(userService.getByUsername(username, authUserId), authUserId, false));
     }
 
     @PutMapping("/{id}")
@@ -44,9 +44,6 @@ public class UserController {
                                                @Valid @RequestBody UpdateProfileRequest req,
                                                HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        if (authUserId == null || authUserId.isBlank()) {
-            authUserId = id;
-        }
         return ResponseEntity.ok(userService.updateProfile(authUserId, id, req));
     }
 
@@ -55,15 +52,14 @@ public class UserController {
                                                      @RequestBody Map<String, String> body,
                                                      HttpServletRequest request) {
         String authUserId = getUserIdFromRequest(request);
-        if (authUserId == null || authUserId.isBlank()) {
-            authUserId = id;
-        }
         return ResponseEntity.ok(userService.updateAvatar(authUserId, id, body.get("avatarUrl")));
     }
 
     @PutMapping({"/{id}/status", "/{id}/toggle-active"})
-    public ResponseEntity<UserResponse> toggleUserStatus(@PathVariable String id) {
-        return ResponseEntity.ok(userService.toggleUserStatus(id));
+    public ResponseEntity<UserResponse> toggleUserStatus(@PathVariable String id, HttpServletRequest request) {
+        boolean administrator = request.isUserInRole("ADMIN_SISTEMA");
+        var user = userService.toggleUserStatus(id, !administrator);
+        return ResponseEntity.ok(visibleProfile(user, getUserIdFromRequest(request), administrator));
     }
 
     @DeleteMapping("/{id}")
@@ -72,12 +68,16 @@ public class UserController {
         return ResponseEntity.ok().build();
     }
 
-    private String getUserIdFromRequest(HttpServletRequest request) {
-        if (request == null) return null;
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            return jwtUtil.getUserId(header.substring(7));
+    private UserResponse visibleProfile(UserResponse user, String viewerId, boolean canViewContact) {
+        if (!canViewContact && !user.getId().equals(viewerId)) {
+            user.setEmail(null);
+            user.setPhone(null);
         }
-        return null;
+        return user;
+    }
+
+    private String getUserIdFromRequest(HttpServletRequest request) {
+        var principal = request == null ? null : request.getUserPrincipal();
+        return principal == null ? null : principal.getName();
     }
 }

@@ -7,22 +7,14 @@ class TokenStorage {
 
   Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    if (!await prefs.setString(_tokenKey, token)) {
+      throw StateError('No se pudo guardar la sesión.');
+    }
   }
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_tokenKey);
-  }
-
-  Future<void> saveUserId(String userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_userIdKey, userId);
-  }
-
-  Future<String?> getUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_userIdKey);
   }
 
   // GESTIÓN REAL DE RESTAURANTES FAVORITOS DEL USUARIO
@@ -58,8 +50,24 @@ class TokenStorage {
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_userIdKey);
-    await prefs.remove(_favoritesKey);
+    await _clear(prefs);
+  }
+
+  Future<bool> clearIfCurrentToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString(_tokenKey) != token) return false;
+    await _clear(prefs);
+    return true;
+  }
+
+  Future<void> _clear(SharedPreferences prefs) async {
+    final removed = await Future.wait([
+      prefs.remove(_tokenKey),
+      prefs.remove(_userIdKey),
+      prefs.remove(_favoritesKey),
+    ]);
+    if (removed.contains(false)) {
+      throw StateError('No se pudo limpiar la sesión almacenada.');
+    }
   }
 }

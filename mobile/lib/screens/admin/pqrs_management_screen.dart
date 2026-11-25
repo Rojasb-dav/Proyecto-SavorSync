@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/auth_service.dart';
+import '../../providers/auth_provider.dart';
 
 class PqrsManagementScreen extends StatefulWidget {
   const PqrsManagementScreen({super.key});
@@ -15,6 +18,7 @@ class _PqrsManagementScreenState extends State<PqrsManagementScreen> {
   final ApiService _apiService = ApiService();
   List<Map<String, dynamic>> _pqrsList = [];
   bool _loading = true;
+  bool _approving = false;
 
   @override
   void initState() {
@@ -128,8 +132,30 @@ class _PqrsManagementScreenState extends State<PqrsManagementScreen> {
     );
   }
 
+  Future<void> _approveRestaurant(String id) async {
+    if (_approving) return;
+    setState(() => _approving = true);
+    try {
+      await AuthService().approveRestaurantAdmin(id);
+      if (!mounted) return;
+      await _loadPqrs();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Solicitud de restaurante aprobada.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _approving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isSystemAdmin = context.watch<AuthProvider>().user?.role == 'admin_sistema';
     return Scaffold(
       appBar: AppBar(title: const Text('Bandeja de Gestión PQRS')),
       body: Center(
@@ -158,6 +184,9 @@ class _PqrsManagementScreenState extends State<PqrsManagementScreen> {
                         final data = _pqrsList[i];
                         final estado = data['status'] ?? data['estado'] ?? 'recibida';
                         final isClosed = estado == 'resuelta' || estado == 'cerrada';
+                        final id = data['id'];
+                        final isRestaurantRequest =
+                            (data['asunto'] ?? data['subject']) == 'Solicitud de administración de restaurante';
 
                         Color estadoColor = Colors.orange;
                         if (estado == 'en_gestion') estadoColor = Colors.blue;
@@ -216,6 +245,12 @@ class _PqrsManagementScreenState extends State<PqrsManagementScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
+                                  if (isSystemAdmin && isRestaurantRequest && !isClosed && id is String)
+                                    TextButton(
+                                      onPressed: _approving ? null : () => _approveRestaurant(id),
+                                      child: const Text('Aprobar administración'),
+                                    ),
+                                  if (!isRestaurantRequest || isSystemAdmin)
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(backgroundColor: isClosed ? AppColors.secondary : AppColors.primary),
                                     icon: Icon(isClosed ? Icons.edit_note_rounded : Icons.reply_rounded, color: Colors.white, size: 18),

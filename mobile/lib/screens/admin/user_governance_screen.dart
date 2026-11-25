@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/auth_provider.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
@@ -175,12 +178,11 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
                       if (!formKey.currentState!.validate()) return;
                       setDlgState(() => isSaving = true);
                       try {
-                        await _authService.register(
+                        await _authService.createModerator(
                           email: emailCtrl.text.trim(),
                           username: usernameCtrl.text.trim(),
                           password: passwordCtrl.text,
                           fullName: nameCtrl.text.trim(),
-                          role: 'moderador',
                         );
 
                         if (!mounted) return;
@@ -212,11 +214,12 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSystemAdmin = context.watch<AuthProvider>().user?.role == 'admin_sistema';
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gestión de Usuarios & Moderadores'),
         actions: [
-          Padding(
+          if (isSystemAdmin) Padding(
             padding: const EdgeInsets.only(right: 16),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
@@ -310,9 +313,10 @@ class _UserGovernanceScreenState extends State<UserGovernanceScreen> {
                                       color: user.isActive ? Colors.green : Colors.red,
                                     ),
                                     tooltip: user.isActive ? 'Activo (Clic para suspender)' : 'Suspendido (Clic para activar)',
-                                    onPressed: () => _toggleUserStatus(user),
+                                    onPressed: isSystemAdmin || roleStr == 'foodie' || roleStr == 'restaurant_admin'
+                                        ? () => _toggleUserStatus(user) : null,
                                   ),
-                                  IconButton(
+                                  if (isSystemAdmin) IconButton(
                                     icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
                                     tooltip: 'Eliminar Usuario',
                                     onPressed: () => _deleteUser(user),

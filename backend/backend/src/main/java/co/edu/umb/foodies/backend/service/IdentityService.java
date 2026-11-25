@@ -1,0 +1,110 @@
+package co.edu.umb.foodies.backend.service;
+
+import co.edu.umb.foodies.backend.dto.response.UserResponse;
+import co.edu.umb.foodies.backend.model.Pqrs;
+import co.edu.umb.foodies.backend.model.User;
+import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.PqrsRepository;
+import co.edu.umb.foodies.backend.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class IdentityService {
+
+    public static final String RESTAURANT_REQUEST_SUBJECT = "Solicitud de administración de restaurante";
+    private static final List<Pqrs.PqrsStatus> OPEN_STATES = List.of(
+            Pqrs.PqrsStatus.recibida, Pqrs.PqrsStatus.en_gestion);
+
+    private final UserRepository users;
+    private final PqrsRepository pqrs;
+    private final AuthSessionRepository sessions;
+    private final EmailVerificationService verification;
+
+    public void sendVerification(String userId) {
+        var user = users.findById(userId).orElseThrow(IdentityService::invalidSession);
+        requireActive(user);
+        verification.send(user);
+    }
+
+    @Transactional
+    public UserResponse verifyEmail(String userId, String code) {
+        var user = activeUserForUpdate(userId);
+        verification.requireProof(user, code);
+        user.setEmailVerified(true);
+        return UserResponse.from(user);
+    }
+
+    @Transactional
+    public Pqrs requestRestaurantAdmin(String userId, String code, String description) {
+        var user = activeUserForUpdate(userId);
+        requireFoodie(user);
+        verification.requireProof(user, code);
+        user.setEmailVerified(true);
+        return pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(userId, RESTAURANT_REQUEST_SUBJECT, OPEN_STATES)
+                .orElseGet(() -> pqrs.save(Pqrs.builder()
+                        .clienteId(userId)
+                        .tipo(Pqrs.PqrsType.peticion)
+                        .asunto(RESTAURANT_REQUEST_SUBJECT)
+                        .descripcion(description.trim())
+                        .estado(Pqrs.PqrsStatus.recibida)
+                        .build()));
+    }
+
+    @Transactional
+    public UserResponse approveRestaurantAdmin(String requestId) {
+        var request = pqrs.findByIdForUpdate(requestId)
+                .filter(ticket -> isRestaurantRequest(ticket.getAsunto()) && ticket.getTipo() == Pqrs.PqrsType.peticion)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Solicitud no encontrada"));
+        if (!OPEN_STATES.contains(request.getEstado())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La solicitud ya fue atendida");
+        }
+        var user = activeUserForUpdate(request.getClienteId());
+        requireFoodie(user);
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La cuenta debe verificar su correo");
+        }
+        user.setRole(User.Role.restaurant_admin);
+        sessions.revokeAllByUserId(user.getId());
+
+        var now = LocalDateTime.now();
+        request.setEstado(Pqrs.PqrsStatus.resuelta);
+        request.setRespuesta("Solicitud aprobada. Vuelve a iniciar sesión desde la aplicación web.");
+        request.setFechaGestion(now);
+        request.setFechaCierre(now);
+        return UserResponse.from(user);
+    }
+
+    public static boolean isRestaurantRequest(String subject) {
+        return subject != null && RESTAURANT_REQUEST_SUBJECT.equalsIgnoreCase(subject.trim());
+    }
+
+    private User activeUserForUpdate(String userId) {
+        var user = users.findByIdForUpdate(userId).orElseThrow(IdentityService::invalidSession);
+        requireActive(user);
+        return user;
+    }
+
+    private static void requireActive(User user) {
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw invalidSession();
+        }
+    }
+
+    private static void requireFoodie(User user) {
+        if (user.getRole() != User.Role.foodie) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La cuenta no es elegible para esta solicitud");
+        }
+    }
+
+    private static ResponseStatusException invalidSession() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
+    }
+}

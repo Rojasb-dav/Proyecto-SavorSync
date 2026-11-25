@@ -4,6 +4,7 @@ import co.edu.umb.foodies.backend.dto.request.UpdateProfileRequest;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
 import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.User;
+import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
+    private final AuthSessionRepository authSessionRepository;
 
     public List<UserResponse> getAllUsers(String authUserId) {
         return userRepository.findAll().stream()
@@ -47,14 +49,13 @@ public class UserService {
         if (!authUserId.equals(targetId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes modificar este perfil");
         }
-        User user = userRepository.findById(targetId)
+        User user = userRepository.findByIdForUpdate(targetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
         if (req.getFullName() != null) user.setFullName(req.getFullName());
         if (req.getBio() != null) user.setBio(req.getBio());
         if (req.getPhone() != null) user.setPhone(req.getPhone());
         if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()) user.setAvatarUrl(req.getAvatarUrl());
-        if (req.getEmailVerified() != null) user.setEmailVerified(req.getEmailVerified());
 
         if (req.getUsername() != null && !req.getUsername().equals(user.getUsername())) {
             if (userRepository.existsByUsername(req.getUsername())) {
@@ -71,7 +72,7 @@ public class UserService {
         if (!authUserId.equals(targetId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes modificar este perfil");
         }
-        User user = userRepository.findById(targetId)
+        User user = userRepository.findByIdForUpdate(targetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         user.setAvatarUrl(avatarUrl);
         return UserResponse.from(userRepository.save(user));
@@ -79,10 +80,24 @@ public class UserService {
 
     @Transactional
     public UserResponse toggleUserStatus(String targetId) {
-        User user = userRepository.findById(targetId)
+        return toggleUserStatus(targetId, false);
+    }
+
+    @Transactional
+    public UserResponse toggleUserStatus(String targetId, boolean restrictToCustomers) {
+        User user = userRepository.findByIdForUpdate(targetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        user.setIsActive(!Boolean.TRUE.equals(user.getIsActive()));
-        return UserResponse.from(userRepository.save(user));
+        if (restrictToCustomers && user.getRole() != User.Role.foodie
+                && user.getRole() != User.Role.restaurant_admin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes gestionar esta cuenta");
+        }
+        boolean activating = !Boolean.TRUE.equals(user.getIsActive());
+        user.setIsActive(activating);
+        User saved = userRepository.save(user);
+        if (!activating) {
+            authSessionRepository.revokeAllByUserId(saved.getId());
+        }
+        return UserResponse.from(saved);
     }
 
     @Transactional

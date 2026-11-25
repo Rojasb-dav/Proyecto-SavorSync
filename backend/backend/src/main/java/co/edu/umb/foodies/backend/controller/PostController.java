@@ -10,7 +10,6 @@ import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.PostRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.service.PostService;
-import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,7 +33,6 @@ public class PostController {
     private final NotificationRepository notificationRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
-    private final JwtUtil jwtUtil;
 
     @GetMapping
     public ResponseEntity<List<PostDTO>> getAllPosts(HttpServletRequest request) {
@@ -50,11 +48,7 @@ public class PostController {
 
     @PostMapping
     public ResponseEntity<PostDTO> createPost(@RequestBody PostDTO postDTO, HttpServletRequest request) {
-        String userId = getUserIdFromRequest(request);
-        if (userId == null || userId.isBlank()) {
-            userId = postDTO.getUserId();
-        }
-        return ResponseEntity.ok(postService.createPost(postDTO, userId));
+        return ResponseEntity.ok(postService.createPost(postDTO, request.getUserPrincipal().getName()));
     }
 
     @DeleteMapping("/{id}")
@@ -65,7 +59,8 @@ public class PostController {
     }
 
     @GetMapping("/{postId}/comments")
-    public ResponseEntity<List<CommentDTO>> getComments(@PathVariable String postId) {
+    public ResponseEntity<List<CommentDTO>> getComments(@PathVariable String postId, HttpServletRequest request) {
+        postService.requireVisiblePost(postId, getUserIdFromRequest(request));
         try {
             List<Comment> comments = commentRepository.findByPostId(postId);
             if (comments == null || comments.isEmpty()) {
@@ -92,27 +87,15 @@ public class PostController {
 
     @PostMapping("/{postId}/comments")
     public ResponseEntity<CommentDTO> addComment(@PathVariable String postId, @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        String userId = request.getUserPrincipal().getName();
+        postService.requireVisiblePost(postId, userId);
         try {
-            String userId = getUserIdFromRequest(request);
             String content = body.get("content") != null ? body.get("content").toString() : "";
             if (content.isBlank() && body.get("contenido") != null) {
                 content = body.get("contenido").toString();
             }
 
-            String authorId = userId != null && !userId.isBlank() ? userId : (body.get("authorId") != null ? body.get("authorId").toString() : null);
-
-            if (authorId == null || authorId.isBlank() || "anon".equalsIgnoreCase(authorId)) {
-                User fallbackUser = userRepository.findAll().stream().findFirst().orElse(null);
-                if (fallbackUser != null) {
-                    authorId = fallbackUser.getId();
-                }
-            }
-
-            if (authorId == null) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Debes iniciar sesión para comentar");
-            }
-
-            User author = userRepository.findById(authorId).orElse(null);
+            User author = userRepository.findById(userId).orElse(null);
             if (author == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Usuario autor no encontrado");
             }
@@ -159,29 +142,12 @@ public class PostController {
 
     @PostMapping("/{postId}/like")
     public ResponseEntity<Void> toggleLike(@PathVariable String postId, HttpServletRequest request) {
-        try {
-            String userId = getUserIdFromRequest(request);
-            if (userId == null || userId.isBlank()) {
-                User fallbackUser = userRepository.findAll().stream().findFirst().orElse(null);
-                if (fallbackUser != null) {
-                    userId = fallbackUser.getId();
-                }
-            }
-            if (userId != null && !userId.isBlank()) {
-                postService.toggleLike(postId, userId);
-            }
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            System.err.println("ERROR al dar like: " + e.getMessage());
-            return ResponseEntity.ok().build();
-        }
+        postService.toggleLike(postId, request.getUserPrincipal().getName());
+        return ResponseEntity.ok().build();
     }
 
     private String getUserIdFromRequest(HttpServletRequest request) {
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            return jwtUtil.getUserId(header.substring(7));
-        }
-        return null;
+        var principal = request == null ? null : request.getUserPrincipal();
+        return principal == null ? null : principal.getName();
     }
 }

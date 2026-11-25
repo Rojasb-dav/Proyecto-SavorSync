@@ -1,9 +1,11 @@
 package co.edu.umb.foodies.backend.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
+@JsonIgnoreProperties("emailVerified")
 public class UpdateProfileRequest {
 
     @Size(max = 150)
@@ -20,6 +22,4 @@ public class UpdateProfileRequest {
 
     @Size(max = 500)
     private String avatarUrl;
-
-    private Boolean emailVerified;
 }

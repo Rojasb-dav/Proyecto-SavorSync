@@ -1,7 +1,9 @@
 package co.edu.umb.foodies.backend.security.config;
 
+import co.edu.umb.foodies.backend.security.RestSecurityErrors;
 import co.edu.umb.foodies.backend.security.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -23,6 +25,14 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestSecurityErrors securityErrors;
+
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterServletRegistration() {
+        var registration = new FilterRegistrationBean<>(jwtAuthenticationFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -53,11 +63,30 @@ public class SecurityConfig {
             .cors(c -> {})
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint(securityErrors)
+                .accessDeniedHandler(securityErrors)
+            )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/**", "/api/v1/auth/**").permitAll()
+                .requestMatchers(JwtAuthenticationFilter.PUBLIC_AUTH_ENDPOINTS).permitAll()
                 .requestMatchers("/api/files/view/**", "/api/v1/files/view/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/restaurants/**", "/api/v1/pqrs/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/restaurants/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/users").hasAnyRole("MODERADOR", "ADMIN_SISTEMA")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/users/*/status", "/api/v1/users/*/toggle-active")
+                    .hasAnyRole("MODERADOR", "ADMIN_SISTEMA")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/users/*").hasRole("ADMIN_SISTEMA")
+                .requestMatchers(HttpMethod.POST, "/api/v1/restaurants", "/api/v1/restaurants/*/menu")
+                    .hasRole("RESTAURANT_ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/restaurants/*/status", "/api/v1/pqrs/*")
+                    .hasAnyRole("MODERADOR", "ADMIN_SISTEMA")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/restaurants/*")
+                    .hasAnyRole("RESTAURANT_ADMIN", "ADMIN_SISTEMA")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/reservations/*").hasRole("RESTAURANT_ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/reservations", "/api/v1/pqrs").hasRole("FOODIE")
+                .requestMatchers(HttpMethod.POST, "/api/v1/notifications", "/api/v1/auth/moderators",
+                        "/api/v1/auth/restaurant-admin/requests/*/approve").hasRole("ADMIN_SISTEMA")
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/restaurant-admin/request").hasRole("FOODIE")
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()
             )

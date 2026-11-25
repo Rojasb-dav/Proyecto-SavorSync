@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/auth_provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
@@ -79,12 +82,11 @@ class _ModerationScreenState extends State<ModerationScreen> {
                       if (!formKey.currentState!.validate()) return;
                       setDlgState(() => loading = true);
                       try {
-                        await _authService.register(
+                        await _authService.createModerator(
                           email: emailCtrl.text.trim(),
                           username: usernameCtrl.text.trim(),
                           password: passwordCtrl.text,
                           fullName: nameCtrl.text.trim(),
-                          role: 'MODERADOR',
                         );
 
                         if (!ctx.mounted) return;
@@ -111,11 +113,12 @@ class _ModerationScreenState extends State<ModerationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSystemAdmin = context.watch<AuthProvider>().user?.role == 'admin_sistema';
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cola de Moderación de Contenidos'),
         actions: [
-          Padding(
+          if (isSystemAdmin) Padding(
             padding: const EdgeInsets.only(right: 16),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),

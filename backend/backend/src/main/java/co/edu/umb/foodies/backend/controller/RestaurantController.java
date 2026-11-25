@@ -5,7 +5,6 @@ import co.edu.umb.foodies.backend.model.Restaurant;
 import co.edu.umb.foodies.backend.repository.MenuItemRepository;
 import co.edu.umb.foodies.backend.repository.ReservationRepository;
 import co.edu.umb.foodies.backend.repository.RestaurantRepository;
-import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,29 +23,33 @@ public class RestaurantController {
     private final RestaurantRepository restaurantRepository;
     private final MenuItemRepository menuItemRepository;
     private final ReservationRepository reservationRepository;
-    private final JwtUtil jwtUtil;
 
     @GetMapping
-    public ResponseEntity<List<Restaurant>> getAllRestaurants() {
-        return ResponseEntity.ok(restaurantRepository.findAll());
+    public ResponseEntity<List<Restaurant>> getAllRestaurants(HttpServletRequest request) {
+        if (request.isUserInRole("MODERADOR") || request.isUserInRole("ADMIN_SISTEMA")) {
+            return ResponseEntity.ok(restaurantRepository.findAll());
+        }
+        if (request.isUserInRole("RESTAURANT_ADMIN")) {
+            return ResponseEntity.ok(restaurantRepository.findByStatusOrOwnerId(
+                    Restaurant.RestaurantStatus.activo, request.getUserPrincipal().getName()));
+        }
+        return ResponseEntity.ok(restaurantRepository.findByStatus(Restaurant.RestaurantStatus.activo));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Restaurant> getRestaurantById(@PathVariable String id) {
-        return restaurantRepository.findById(id)
+    public ResponseEntity<Restaurant> getRestaurantById(@PathVariable String id, HttpServletRequest request) {
+        return restaurantRepository.findById(id).filter(restaurant -> canView(restaurant, request))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
     public ResponseEntity<Restaurant> createRestaurant(@RequestBody Restaurant restaurant, HttpServletRequest request) {
-        String authUserId = getUserIdFromRequest(request);
-        if (authUserId != null && !authUserId.isBlank()) {
-            restaurant.setOwnerId(authUserId);
-        }
-        if (restaurant.getStatus() == null) {
-            restaurant.setStatus(Restaurant.RestaurantStatus.pendiente);
-        }
+        restaurant.setId(null);
+        restaurant.setOwnerId(request.getUserPrincipal().getName());
+        restaurant.setStatus(Restaurant.RestaurantStatus.pendiente);
+        restaurant.setRatingAverage(null);
+        restaurant.setReviewsCount(null);
         return ResponseEntity.ok(restaurantRepository.save(restaurant));
     }
 
@@ -63,10 +66,12 @@ public class RestaurantController {
     @Transactional
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteRestaurant(@PathVariable String id, HttpServletRequest request) {
-        String authUserId = getUserIdFromRequest(request);
         Restaurant restaurant = restaurantRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Restaurante no encontrado"));
 
+        if (!request.isUserInRole("ADMIN_SISTEMA") && !isOwner(restaurant, request)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes eliminar este restaurante");
+        }
         try {
             menuItemRepository.findByRestaurantId(id).forEach(menuItemRepository::delete);
             reservationRepository.findByRestaurantId(id).forEach(reservationRepository::delete);
@@ -79,22 +84,32 @@ public class RestaurantController {
     }
 
     @GetMapping("/{id}/menu")
-    public ResponseEntity<List<MenuItem>> getMenu(@PathVariable String id) {
+    public ResponseEntity<List<MenuItem>> getMenu(@PathVariable String id, HttpServletRequest request) {
+        restaurantRepository.findById(id).filter(r -> canView(r, request))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Restaurante no encontrado"));
         return ResponseEntity.ok(menuItemRepository.findByRestaurantId(id));
     }
 
     @PostMapping("/{id}/menu")
-    public ResponseEntity<MenuItem> createMenuItem(@PathVariable String id, @RequestBody MenuItem item) {
+    public ResponseEntity<MenuItem> createMenuItem(@PathVariable String id, @RequestBody MenuItem item,
+                                                   HttpServletRequest request) {
+        if (restaurantRepository.findById(id).filter(r -> isOwner(r, request)).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes gestionar este menú");
+        }
+        item.setId(null);
         item.setRestaurantId(id);
         return ResponseEntity.ok(menuItemRepository.save(item));
     }
 
-    private String getUserIdFromRequest(HttpServletRequest request) {
-        if (request == null) return null;
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            return jwtUtil.getUserId(header.substring(7));
-        }
-        return null;
+    private boolean canView(Restaurant restaurant, HttpServletRequest request) {
+        return restaurant.getStatus() == Restaurant.RestaurantStatus.activo
+                || isOwner(restaurant, request)
+                || request.isUserInRole("MODERADOR")
+                || request.isUserInRole("ADMIN_SISTEMA");
+    }
+
+    private boolean isOwner(Restaurant restaurant, HttpServletRequest request) {
+        return request.isUserInRole("RESTAURANT_ADMIN")
+                && request.getUserPrincipal().getName().equals(restaurant.getOwnerId());
     }
 }

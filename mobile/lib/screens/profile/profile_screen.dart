@@ -62,7 +62,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       final userObj = await _apiService.dio.get('/users/$targetId');
       final fetchedUser = UserModel.fromJson(Map<String, dynamic>.from(userObj.data));
       final postsList = await _apiService.getUserPosts(targetId);
-      final resList = await _apiService.getReservations(userId: targetId);
+      final resList = targetId == currentUserId
+          ? await _apiService.getReservations(userId: targetId)
+          : <ReservationModel>[];
       final allRestaurants = await _apiService.getRestaurants();
 
       final favoriteIds = await TokenStorage().getFavoriteRestaurantIds();

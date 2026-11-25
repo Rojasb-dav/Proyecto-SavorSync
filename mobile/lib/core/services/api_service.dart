@@ -26,19 +26,33 @@ class ApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await _tokenStorage.getToken();
-          if (token != null && token.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $token';
+          try {
+            if (options.extra[_manageSession] != false) {
+              final token = await _tokenStorage.getToken();
+              if (token != null && token.isNotEmpty) {
+                options.headers['Authorization'] = 'Bearer $token';
+                options.extra[_requestToken] = token;
+              }
+            }
+            options.headers['X-Platform'] = kIsWeb ? 'web' : 'mobile';
+            handler.next(options);
+          } catch (error) {
+            handler.reject(DioException(requestOptions: options, error: error));
           }
-          options.headers['X-Platform'] = kIsWeb ? 'web' : 'mobile';
-          handler.next(options);
         },
-        onError: (e, handler) async {
-          if (e.response?.statusCode == 401) {
-            await _tokenStorage.clear();
-            onUnauthorized?.call();
+        onError: (error, handler) async {
+          final token = error.requestOptions.extra[_requestToken];
+          if (error.response?.statusCode == 401 && token is String) {
+            try {
+              if (await _tokenStorage.clearIfCurrentToken(token) &&
+                  await _tokenStorage.getToken() == null) {
+                onUnauthorized?.call();
+              }
+            } catch (_) {
+              // Preserve the original HTTP error if token storage is unavailable.
+            }
           }
-          handler.next(e);
+          handler.next(error);
         },
       ),
     );
@@ -48,6 +62,14 @@ class ApiService {
   factory ApiService() => _instance;
 
   static const String baseUrl = 'https://proyecto-savorsync.onrender.com/api/v1';
+
+  static const _manageSession = 'manageSession';
+  static const _requestToken = 'requestToken';
+
+  static Options authRequestOptions([String? token]) => Options(
+        extra: {_manageSession: false},
+        headers: token == null ? null : {'Authorization': 'Bearer $token'},
+      );
 
   late final Dio _dio;
   final TokenStorage _tokenStorage = TokenStorage();

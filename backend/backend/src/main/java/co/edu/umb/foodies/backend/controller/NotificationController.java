@@ -2,7 +2,10 @@ package co.edu.umb.foodies.backend.controller;
 
 import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,26 +19,37 @@ public class NotificationController {
     private final NotificationRepository notificationRepository;
 
     @GetMapping
-    public ResponseEntity<List<Notification>> getNotifications(@RequestParam String userId) {
-        return ResponseEntity.ok(notificationRepository.findByClienteId(userId));
+    public ResponseEntity<List<Notification>> getNotifications(@RequestParam(required = false) String userId,
+                                                                  HttpServletRequest request) {
+        String owner = request.getUserPrincipal().getName();
+        if (userId != null && !owner.equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes consultar notificaciones ajenas");
+        }
+        return ResponseEntity.ok(notificationRepository.findByClienteId(owner));
     }
 
     @PostMapping
     public ResponseEntity<Notification> createNotification(@RequestBody Notification notification) {
+        notification.setId(null);
         return ResponseEntity.ok(notificationRepository.save(notification));
     }
 
     @PutMapping("/{id}/read")
-    public ResponseEntity<Notification> markRead(@PathVariable String id) {
-        return notificationRepository.findById(id).map(n -> {
+    public ResponseEntity<Notification> markRead(@PathVariable String id, HttpServletRequest request) {
+        String owner = request.getUserPrincipal().getName();
+        return notificationRepository.findById(id).filter(n -> owner.equals(n.getClienteId())).map(n -> {
             n.setRead(true);
             return ResponseEntity.ok(notificationRepository.save(n));
         }).orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteNotification(@PathVariable String id) {
-        notificationRepository.deleteById(id);
+    public ResponseEntity<Void> deleteNotification(@PathVariable String id, HttpServletRequest request) {
+        String owner = request.getUserPrincipal().getName();
+        var notification = notificationRepository.findById(id)
+                .filter(n -> owner.equals(n.getClienteId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notificación no encontrada"));
+        notificationRepository.delete(notification);
         return ResponseEntity.ok().build();
     }
 }

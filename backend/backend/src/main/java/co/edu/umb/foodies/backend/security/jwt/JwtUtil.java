@@ -1,106 +1,85 @@
 package co.edu.umb.foodies.backend.security.jwt;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HexFormat;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
 
-    @Value("${app.jwt.secret}")
-    private String secret;
+    private final Key key;
+    private final JwtParser parser;
+    private final long expirationMs;
 
-    @Value("${app.jwt.expiration-ms}")
-    private long expirationMs;
-
-    private Key key;
-
-    private Key getKey() {
-        if (key == null) {
-            key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    public JwtUtil(@Value("${app.jwt.secret}") String secret,
+                   @Value("${app.jwt.expiration-ms}") long expirationMs) {
+        if (expirationMs < 1000) {
+            throw new IllegalArgumentException("La vigencia del JWT debe ser al menos de un segundo");
         }
-        return key;
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.parser = Jwts.parserBuilder().setSigningKey(key).build();
+        this.expirationMs = expirationMs;
     }
 
-    public long getExpirationMs() {
-        return expirationMs;
-    }
-
-    public String generateToken(String userId, String email, String role) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", userId);
-        claims.put("email", email);
-        claims.put("role", role);
-
-        Date now = new Date();
-        Date exp = new Date(now.getTime() + expirationMs);
-
-        return Jwts.builder()
-                .setClaims(claims)
+    public IssuedToken issueToken(String userId, String email, String role) {
+        Instant issuedAt = Instant.now();
+        Instant expiresAt = issuedAt.plusMillis(expirationMs).truncatedTo(ChronoUnit.SECONDS);
+        String token = Jwts.builder()
+                .setId(UUID.randomUUID().toString())
                 .setSubject(userId)
-                .setIssuedAt(now)
-                .setExpiration(exp)
-                .signWith(getKey(), SignatureAlgorithm.HS256)
+                .claim("userId", userId)
+                .claim("email", email)
+                .claim("role", role)
+                .setIssuedAt(Date.from(issuedAt))
+                .setExpiration(Date.from(expiresAt))
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
+        return new IssuedToken(token, expiresAt);
     }
 
     public Claims parse(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+        var jwt = parser.parseClaimsJws(token);
+        if (!SignatureAlgorithm.HS256.getValue().equals(jwt.getHeader().getAlgorithm())) {
+            throw new UnsupportedJwtException("Algoritmo de firma JWT no admitido");
+        }
+        return jwt.getBody();
     }
 
-    public String getUserId(String token) {
+    public String sessionTokenKey(String token) {
         try {
-            Claims claims = parse(token);
-            String uid = claims.get("userId", String.class);
-            if (uid == null || uid.isBlank()) {
-                uid = claims.getSubject();
-            }
-            return uid;
-        } catch (Exception e) {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+            return "v1:" + HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 no disponible", e);
+        }
+    }
+
+    public static String bearerToken(String authorization) {
+        if (authorization == null) {
             return null;
         }
+        if (authorization.equalsIgnoreCase("Bearer")) {
+            return "";
+        }
+        return authorization.regionMatches(true, 0, "Bearer ", 0, 7)
+                ? authorization.substring(7).strip()
+                : null;
     }
 
-    public String getEmail(String token) {
-        try {
-            Claims claims = parse(token);
-            String em = claims.get("email", String.class);
-            if (em == null || em.isBlank()) {
-                em = claims.getSubject();
-            }
-            return em;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    public String getRole(String token) {
-        try {
-            return parse(token).get("role", String.class);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    public boolean isValid(String token) {
-        try {
-            parse(token);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
+    public record IssuedToken(String token, Instant expiresAt) {}
 }

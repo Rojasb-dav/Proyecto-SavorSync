@@ -7,37 +7,41 @@ import 'api_service.dart';
 class AuthResult {
   final String token;
   final UserModel user;
-  AuthResult({required this.token, required this.user});
+  final String tokenType;
+  final int? expiresInMs;
+
+  AuthResult({
+    required this.token,
+    required this.user,
+    this.tokenType = 'Bearer',
+    this.expiresInMs,
+  });
 }
 
 class AuthService {
-  final ApiService _apiService = ApiService();
-  final TokenStorage _tokenStorage = TokenStorage();
+  AuthService({Dio? dio, TokenStorage? tokenStorage})
+      : _dio = dio ?? ApiService().dio,
+        _tokenStorage = tokenStorage ?? TokenStorage();
+
+  final Dio _dio;
+  final TokenStorage _tokenStorage;
 
   Future<AuthResult> login(String email, String password) async {
     try {
-      final response = await _apiService.dio.post(
+      final response = await _dio.post(
         '/auth/login',
+        options: ApiService.authRequestOptions(),
         data: {
           'email': email.trim(),
           'password': password.trim(),
         },
       );
 
-      final data = response.data;
-      final String token = data['token'] ?? '';
-      final Map<String, dynamic> userMap = Map<String, dynamic>.from(data['user'] ?? {});
-      final user = UserModel.fromJson(userMap);
-
-      await _tokenStorage.saveToken(token);
-      await _tokenStorage.saveUserId(user.id);
-
-      return AuthResult(token: token, user: user);
+      return await _acceptSession(response.data);
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.response?.data?['error'] ?? 'Error al iniciar sesión.';
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Error al iniciar sesión: $e');
+      throw Exception(_authError(e, 'Error al iniciar sesión.'));
+    } catch (_) {
+      throw Exception('No se pudo iniciar sesión correctamente.');
     }
   }
 
@@ -46,94 +50,214 @@ class AuthService {
     required String username,
     required String password,
     String? fullName,
-    String role = 'foodie',
   }) async {
     try {
-      final response = await _apiService.dio.post(
+      final response = await _dio.post(
         '/auth/register',
+        options: ApiService.authRequestOptions(),
         data: {
           'email': email.trim(),
           'username': username.trim(),
           'password': password.trim(),
           'fullName': fullName?.trim() ?? username.trim(),
-          'role': role.trim().toLowerCase(),
         },
       );
 
-      final data = response.data;
-      final String token = data['token'] ?? '';
-      final Map<String, dynamic> userMap = Map<String, dynamic>.from(data['user'] ?? {});
-      final user = UserModel.fromJson(userMap);
-
-      await _tokenStorage.saveToken(token);
-      await _tokenStorage.saveUserId(user.id);
-
-      return AuthResult(token: token, user: user);
+      return await _acceptSession(response.data, expectedRole: 'foodie');
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.response?.data?['error'] ?? 'Error al registrar usuario.';
-      throw Exception(msg);
-    } catch (e) {
-      throw Exception('Error al registrar usuario: $e');
+      throw Exception(_authError(e, 'Error al registrar usuario.'));
+    } catch (_) {
+      throw Exception('No se pudo completar el registro correctamente.');
     }
   }
 
-  Future<AuthResult> signInWithGoogle() async {
-    final mockEmail = 'foodie.google@savorsync.com';
-    final mockUser = UserModel(
-      id: 'google_user_101',
-      email: mockEmail,
-      username: 'foodie_google',
-      fullName: 'Foodie Google User',
-      role: 'foodie',
-      bio: 'Foodie con Google Sign-In en Bogotá',
+  Future<void> createModerator({
+    required String email,
+    required String username,
+    required String password,
+    required String fullName,
+  }) async {
+    try {
+      final response = await _dio.post('/auth/moderators', data: {
+        'email': email.trim(),
+        'username': username.trim(),
+        'password': password.trim(),
+        'fullName': fullName.trim(),
+      });
+      if (response.statusCode != 201 ||
+          _authenticatedUser(response.data).role != 'moderador') {
+        throw const FormatException('El servidor no confirmó el alta del moderador.');
+      }
+    } on DioException catch (e) {
+      throw Exception(_authError(e, 'No se pudo crear el moderador.'));
+    }
+  }
+
+  Future<void> sendVerificationCode() async {
+    try {
+      await _dio.post('/auth/email/verification');
+    } on DioException catch (e) {
+      throw Exception(_authError(e, 'No se pudo enviar el código.'));
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyEmail(String code) async {
+    try {
+      final response = await _dio.post('/auth/email/verify', data: {'code': code.trim()});
+      if (!_authenticatedUser(response.data).emailVerified) {
+        throw const FormatException('El servidor no confirmó la verificación.');
+      }
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      throw Exception(_authError(e, 'No se pudo verificar el correo.'));
+    }
+  }
+
+  Future<void> requestRestaurantAdmin(String code, String description) async {
+    try {
+      final response = await _dio.post('/auth/restaurant-admin/request', data: {
+        'code': code.trim(),
+        'description': description.trim(),
+      });
+      final ticket = response.data;
+      if (ticket is! Map<String, dynamic> || ticket['id'] is! String) {
+        throw const FormatException('El servidor no confirmó la solicitud.');
+      }
+    } on DioException catch (e) {
+      throw Exception(_authError(e, 'No se pudo registrar la solicitud.'));
+    }
+  }
+
+  Future<void> approveRestaurantAdmin(String requestId) async {
+    try {
+      final id = Uri.encodeComponent(requestId);
+      final response = await _dio.post('/auth/restaurant-admin/requests/$id/approve');
+      if (_authenticatedUser(response.data).role != 'restaurant_admin') {
+        throw const FormatException('El servidor no confirmó la aprobación.');
+      }
+    } on DioException catch (e) {
+      throw Exception(_authError(e, 'No se pudo aprobar la solicitud.'));
+    }
+  }
+
+  Future<AuthResult> _acceptSession(Object? data, {String? expectedRole}) async {
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Respuesta de sesión inválida.');
+    }
+
+    final token = data['token'];
+    final tokenType = data['tokenType'] ?? 'Bearer';
+    final expiresInMs = data['expiresInMs'];
+    if (token is! String ||
+        token.trim().isEmpty ||
+        tokenType is! String ||
+        tokenType.toLowerCase() != 'bearer' ||
+        (expiresInMs != null && (expiresInMs is! int || expiresInMs <= 0))) {
+      throw const FormatException('Respuesta de sesión inválida.');
+    }
+
+    final user = _authenticatedUser(data['user']);
+    if (expectedRole != null && user.role != expectedRole) {
+      throw const FormatException('El servidor devolvió un rol inesperado.');
+    }
+    await _tokenStorage.saveToken(token);
+    return AuthResult(
+      token: token,
+      user: user,
+      tokenType: tokenType,
+      expiresInMs: expiresInMs as int?,
     );
-    const mockToken = 'mock_jwt_token_google_101';
-
-    await _tokenStorage.saveToken(mockToken);
-    await _tokenStorage.saveUserId(mockUser.id);
-
-    return AuthResult(token: mockToken, user: mockUser);
   }
 
-  Future<void> logout() async {
-    try {
-      await _apiService.dio.post('/auth/logout');
-    } catch (_) {}
-    await _tokenStorage.clear();
+  UserModel _authenticatedUser(Object? data) {
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Respuesta de usuario inválida.');
+    }
+
+    final user = UserModel.fromJson(data);
+    if (user.id.isEmpty || user.role?.isNotEmpty != true || !user.isActive) {
+      throw const FormatException('Respuesta de usuario inválida.');
+    }
+    return user;
   }
 
-  Future<UserModel> fetchUserById(String id) async {
+  String _authError(DioException error, String fallback) {
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      final message = data['message'] ?? data['error'];
+      if (message is String && message.isNotEmpty) return message;
+    }
+    return fallback;
+  }
+
+  Future<AuthResult> signInWithGoogle() {
+    return Future.error(
+      StateError('El inicio de sesión con Google está temporalmente deshabilitado.'),
+    );
+  }
+
+  Future<bool> logout() async {
+    final token = await _tokenStorage.getToken();
+    if (token == null || token.isEmpty) {
+      await _tokenStorage.clear();
+      return true;
+    }
+
     try {
-      final response = await _apiService.dio.get('/users/$id');
-      final data = Map<String, dynamic>.from(response.data);
-      return UserModel.fromJson(data);
-    } catch (e) {
-      return UserModel(
-        id: id,
-        email: 'usuario@savorsync.com',
-        username: 'foodie_user',
-        fullName: 'Usuario SavorSync',
-        role: 'foodie',
+      await _dio.post(
+        '/auth/logout',
+        options: ApiService.authRequestOptions(token),
       );
+      return true;
+    } on DioException catch (e) {
+      return e.response?.statusCode == 401;
+    } finally {
+      await _tokenStorage.clearIfCurrentToken(token);
+    }
+  }
+
+  Future<UserModel?> restoreSession() async {
+    final token = await _tokenStorage.getToken();
+    if (token == null || token.isEmpty) return null;
+
+    try {
+      final response = await _dio.get(
+        '/auth/me',
+        options: ApiService.authRequestOptions(token),
+      );
+      if (await _tokenStorage.getToken() != token) return null;
+      return _authenticatedUser(response.data);
+    } on DioException catch (e) {
+      if (e.response?.statusCode != 401) rethrow;
+      await _tokenStorage.clearIfCurrentToken(token);
+      return null;
     }
   }
 
   Future<void> forgotPassword(String email) async {
     try {
-      await _apiService.dio.post(
+      await _dio.post(
         '/auth/forgot-password',
+        options: ApiService.authRequestOptions(),
         data: {'email': email.trim()},
       );
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? 'Error al solicitar restablecimiento de contraseña.';
-      throw Exception(msg);
+      throw Exception(_authError(
+        e,
+        'Error al solicitar restablecimiento de contraseña.',
+      ));
     }
   }
 
-  Future<void> resetPassword(String email, String code, String newPassword) async {
+  Future<void> resetPassword(
+    String email,
+    String code,
+    String newPassword,
+  ) async {
     try {
-      await _apiService.dio.post(
+      await _dio.post(
         '/auth/reset-password',
+        options: ApiService.authRequestOptions(),
         data: {
           'email': email.trim(),
           'code': code.trim(),
@@ -141,8 +265,7 @@ class AuthService {
         },
       );
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? 'Error al actualizar la contraseña.';
-      throw Exception(msg);
+      throw Exception(_authError(e, 'Error al actualizar la contraseña.'));
     }
   }
 }

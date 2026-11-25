@@ -30,10 +30,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
-        ex.printStackTrace();
-        String detail = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+        System.err.println("EXCEPCIÓN NO CONTROLADA EN BACKEND: " + ex.getClass().getName());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(body(500, ex.getClass().getName() + ": " + detail));
+                .body(body(500, "Ocurrió un error al procesar la solicitud en el servidor. Por favor intenta de nuevo."));
     }
 
     private Map<String, Object> body(int status, String message) {

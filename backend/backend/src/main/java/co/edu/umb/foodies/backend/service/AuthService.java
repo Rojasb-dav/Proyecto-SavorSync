@@ -14,6 +14,7 @@ import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -23,11 +24,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class AuthService {
 
@@ -43,6 +47,15 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest req, HttpServletRequest httpReq) {
+        return buildAuthResponse(createAccount(req, User.Role.foodie), httpReq);
+    }
+
+    @Transactional
+    public UserResponse createModerator(RegisterRequest req) {
+        return UserResponse.from(createAccount(req, User.Role.moderador));
+    }
+
+    private User createAccount(RegisterRequest req, User.Role role) {
         if (userRepository.existsByEmail(req.getEmail().trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El correo ya está registrado");
         }
@@ -50,11 +63,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
         }
 
-        // FALLO-03 Fix: El registro público asigna obligatoriamente el rol 'foodie'
-        User.Role role = User.Role.foodie;
-
         User user = User.builder()
-                .id(UUID.randomUUID().toString())
                 .email(req.getEmail().trim())
                 .username(req.getUsername().trim())
                 .password(passwordEncoder.encode(req.getPassword().trim()))
@@ -64,14 +73,12 @@ public class AuthService {
                 .emailVerified(false)
                 .build();
 
-        user = userRepository.save(user);
-
-        return buildAuthResponse(user, httpReq);
+        return userRepository.save(user);
     }
 
     @Transactional
     public AuthResponse login(LoginRequest req, HttpServletRequest httpReq) {
-        User user = userRepository.findByEmail(req.getEmail().trim())
+        User user = userRepository.findByEmailForUpdate(req.getEmail().trim())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas"));
 
         if (!Boolean.TRUE.equals(user.getIsActive())) {
@@ -90,13 +97,21 @@ public class AuthService {
         return buildAuthResponse(user, httpReq);
     }
 
+    @Transactional(readOnly = true)
+    public UserResponse currentUser(String userId) {
+        return userRepository.findById(userId)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                .map(UserResponse::from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida"));
+    }
+
     @Transactional
     public void logout(String token) {
-        if (token == null || token.isBlank()) return;
-        authSessionRepository.findBySessionTokenAndIsActiveTrue(token).ifPresent(s -> {
-            s.setIsActive(false);
-            authSessionRepository.save(s);
-        });
+        authSessionRepository.findBySessionTokenAndIsActiveTrue(jwtUtil.sessionTokenKey(token))
+                .ifPresent(session -> {
+                    session.setIsActive(false);
+                    authSessionRepository.save(session);
+                });
     }
 
     @Transactional
@@ -120,7 +135,7 @@ public class AuthService {
 
                 CompletableFuture.runAsync(() -> sendResetEmail(user.getEmail(), code));
             } catch (Exception e) {
-                System.err.println("WARN: Error en forgotPassword: " + e.getMessage());
+                log.warn("No se pudo registrar la solicitud de recuperación ({})", e.getClass().getSimpleName());
             }
         });
     }
@@ -135,35 +150,40 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El código de verificación ha expirado");
         }
 
-        User user = userRepository.findByEmail(email.trim().toLowerCase())
+        User user = userRepository.findByEmailForUpdate(email.trim().toLowerCase())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
         user.setPassword(passwordEncoder.encode(newPassword.trim()));
         userRepository.save(user);
+        authSessionRepository.revokeAllByUserId(user.getId());
 
         passwordResetTokenRepository.delete(resetToken);
     }
 
     private AuthResponse buildAuthResponse(User user, HttpServletRequest httpReq) {
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+        JwtUtil.IssuedToken issued = jwtUtil.issueToken(user.getId(), user.getEmail(), user.getRole().name());
+        String platformHeader = httpReq == null ? null : httpReq.getHeader("X-Platform");
+        AuthSession.Platform platform = "web".equalsIgnoreCase(platformHeader)
+                ? AuthSession.Platform.web_restaurante : AuthSession.Platform.mobile;
+        AuthSession session = AuthSession.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(user.getId())
+                .sessionToken(jwtUtil.sessionTokenKey(issued.token()))
+                .platform(platform)
+                .ipAddress(httpReq == null ? null : httpReq.getRemoteAddr())
+                .isActive(true)
+                .expiresAt(issued.expiresAt())
+                .build();
+        authSessionRepository.saveAndFlush(session);
 
-        try {
-            AuthSession session = AuthSession.builder()
-                    .id(UUID.randomUUID().toString())
-                    .userId(user.getId())
-                    .sessionToken(token)
-                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
-                    .isActive(true)
-                    .expiresAt(LocalDateTime.now().plusDays(1))
-                    .build();
-
-            authSessionRepository.save(session);
-        } catch (Exception e) {
-            System.err.println("WARN: No se pudo guardar la sesión de autenticación: " + e.getMessage());
+        long expiresInMs = Duration.between(Instant.now(), issued.expiresAt()).toMillis();
+        if (expiresInMs <= 0) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "No se pudo iniciar una sesión válida");
         }
-
         return AuthResponse.builder()
-                .token(token)
+                .token(issued.token())
+                .tokenType("Bearer")
+                .expiresInMs(expiresInMs)
                 .user(UserResponse.from(user))
                 .build();
     }
@@ -189,7 +209,7 @@ public class AuthService {
             helper.setText(htmlBody, true);
             mailSender.send(message);
         } catch (Exception e) {
-            System.err.println("ERROR enviando correo SMTP: " + e.getMessage());
+            log.error("No se pudo enviar el correo de recuperación ({})", e.getClass().getSimpleName());
         }
     }
 }

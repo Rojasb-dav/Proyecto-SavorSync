@@ -32,6 +32,7 @@ public class PostService {
     @Transactional(readOnly = true)
     public List<PostDTO> getAllPosts(String currentUserId) {
         return postRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(post -> canView(post, currentUserId))
                 .map(post -> convertToDTO(post, currentUserId))
                 .collect(Collectors.toList());
     }
@@ -41,16 +42,17 @@ public class PostService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         return postRepository.findByUserOrderByCreatedAtDesc(user).stream()
+                .filter(post -> canView(post, currentUserId))
                 .map(post -> convertToDTO(post, currentUserId))
                 .collect(Collectors.toList());
     }
 
     @Transactional
     public PostDTO createPost(PostDTO dto, String targetUserId) {
-        String finalUserId = (targetUserId != null && !targetUserId.isBlank()) ? targetUserId : dto.getUserId();
-        if (finalUserId == null || finalUserId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El ID de usuario es requerido");
+        if (targetUserId == null || targetUserId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Debes iniciar sesión");
         }
+        String finalUserId = targetUserId;
         User user = userRepository.findById(finalUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado con ID: " + finalUserId));
         
@@ -74,10 +76,21 @@ public class PostService {
         return convertToDTO(post, finalUserId);
     }
 
+    @Transactional(readOnly = true)
+    public void requireVisiblePost(String postId, String viewerId) {
+        if (postRepository.countVisiblePost(postId, viewerId, Post.PostStatus.publicada) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada");
+        }
+    }
+
+    private boolean canView(Post post, String viewerId) {
+        return (Boolean.TRUE.equals(post.getIsPublic()) && post.getStatus() == Post.PostStatus.publicada)
+                || (viewerId != null && post.getUser() != null && viewerId.equals(post.getUser().getId()));
+    }
+
     @Transactional
     public void toggleLike(String postId, String userId) {
-        if (userId == null) return;
-        Post post = postRepository.findById(postId)
+        Post post = postRepository.findById(postId).filter(p -> canView(p, userId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));

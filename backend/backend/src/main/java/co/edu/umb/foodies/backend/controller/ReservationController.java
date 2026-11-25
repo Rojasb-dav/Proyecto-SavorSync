@@ -1,8 +1,12 @@
 package co.edu.umb.foodies.backend.controller;
 
+import co.edu.umb.foodies.backend.dto.ReservationDTO;
 import co.edu.umb.foodies.backend.model.Reservation;
+import co.edu.umb.foodies.backend.model.Restaurant;
+import co.edu.umb.foodies.backend.model.User;
 import co.edu.umb.foodies.backend.repository.ReservationRepository;
-import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
+import co.edu.umb.foodies.backend.repository.RestaurantRepository;
+import co.edu.umb.foodies.backend.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/reservations")
@@ -20,43 +25,51 @@ import java.util.Map;
 public class ReservationController {
 
     private final ReservationRepository reservationRepository;
-    private final JwtUtil jwtUtil;
+    private final RestaurantRepository restaurantRepository;
+    private final UserRepository userRepository;
 
     @GetMapping
-    public ResponseEntity<List<Reservation>> getReservations(
+    public ResponseEntity<List<ReservationDTO>> getReservations(
             @RequestParam(required = false) String userId,
             @RequestParam(required = false) String restaurantId,
             HttpServletRequest request) {
 
-        String authUserId = getUserIdFromRequest(request);
-        String targetUserId = (userId != null && !userId.isBlank()) ? userId : authUserId;
-
-        if (targetUserId != null && !targetUserId.isBlank()) {
-            return ResponseEntity.ok(reservationRepository.findByClienteId(targetUserId));
-        }
+        String actor = request.getUserPrincipal().getName();
+        List<Reservation> list;
         if (restaurantId != null && !restaurantId.isBlank()) {
-            return ResponseEntity.ok(reservationRepository.findByRestaurantId(restaurantId));
+            requireRestaurantOwner(restaurantId, request);
+            list = reservationRepository.findByRestaurantId(restaurantId);
+        } else if (userId == null && request.isUserInRole("RESTAURANT_ADMIN")) {
+            list = restaurantRepository.findAllByOwnerId(actor).stream()
+                    .flatMap(restaurant -> reservationRepository.findByRestaurantId(restaurant.getId()).stream())
+                    .toList();
+        } else {
+            if (userId != null && !userId.isBlank() && !actor.equals(userId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes consultar reservas ajenas");
+            }
+            list = reservationRepository.findByClienteId(actor);
         }
-        return ResponseEntity.ok(reservationRepository.findAll());
+
+        List<ReservationDTO> dtos = list.stream().map(this::convertToDTO).collect(Collectors.toList());
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping
-    public ResponseEntity<Reservation> createReservation(@RequestBody Reservation reservation, HttpServletRequest request) {
-        String authUserId = getUserIdFromRequest(request);
-        if (authUserId != null && !authUserId.isBlank()) {
-            reservation.setClienteId(authUserId);
-        } else if (reservation.getClienteId() == null || reservation.getClienteId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Debes iniciar sesión para realizar una reserva");
-        }
+    public ResponseEntity<ReservationDTO> createReservation(@RequestBody Reservation reservation, HttpServletRequest request) {
+        reservation.setId(null);
+        reservation.setClienteId(request.getUserPrincipal().getName());
 
         reservation.setEstado(Reservation.ReservationStatus.pendiente);
-        return ResponseEntity.ok(reservationRepository.save(reservation));
+        Reservation saved = reservationRepository.save(reservation);
+        return ResponseEntity.ok(convertToDTO(saved));
     }
 
     @Transactional
     @PutMapping("/{id}")
-    public ResponseEntity<Reservation> updateStatus(@PathVariable String id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ReservationDTO> updateStatus(@PathVariable String id, @RequestBody Map<String, Object> body,
+                                                         HttpServletRequest request) {
         return reservationRepository.findById(id).map(r -> {
+            requireRestaurantOwner(r.getRestaurantId(), request);
             String raw = body.get("estado") != null ? body.get("estado").toString() : null;
             if (raw == null && body.get("status") != null) {
                 raw = body.get("status").toString();
@@ -70,8 +83,15 @@ public class ReservationController {
                 r.setEstado(Reservation.ReservationStatus.pendiente);
             }
 
-            return ResponseEntity.ok(reservationRepository.save(r));
+            Reservation saved = reservationRepository.save(r);
+            return ResponseEntity.ok(convertToDTO(saved));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private ReservationDTO convertToDTO(Reservation r) {
+        Restaurant rest = (r.getRestaurantId() != null) ? restaurantRepository.findById(r.getRestaurantId()).orElse(null) : null;
+        User user = (r.getClienteId() != null) ? userRepository.findById(r.getClienteId()).orElse(null) : null;
+        return ReservationDTO.from(r, rest, user);
     }
 
     private Reservation.ReservationStatus parseStatus(String input) {
@@ -85,12 +105,12 @@ public class ReservationController {
         return null;
     }
 
-    private String getUserIdFromRequest(HttpServletRequest request) {
-        if (request == null) return null;
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            return jwtUtil.getUserId(header.substring(7));
+    private void requireRestaurantOwner(String restaurantId, HttpServletRequest request) {
+        if (!request.isUserInRole("RESTAURANT_ADMIN") || restaurantId == null
+                || restaurantRepository.findById(restaurantId)
+                    .filter(r -> request.getUserPrincipal().getName().equals(r.getOwnerId()))
+                    .isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes gestionar reservas de este restaurante");
         }
-        return null;
     }
 }

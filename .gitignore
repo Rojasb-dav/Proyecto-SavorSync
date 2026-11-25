@@ -1,7 +1,6 @@
 # Flutter build and cache directories
 mobile/build/
 mobile/.dart_tool/
-mobile/.firebase/
 mobile/.pub-cache/
 mobile/.pub/
 mobile/android/app/build/
@@ -13,6 +12,16 @@ mobile/android/.gradle/
 *.iml
 *.iws
 *.ipr
+
+# Local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
 
 # OS generated files
 .DS_Store

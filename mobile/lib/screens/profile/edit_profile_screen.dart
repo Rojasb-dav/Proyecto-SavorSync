@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/cloudinary_service.dart';
 
@@ -19,6 +19,10 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
+  final AuthService _authService = AuthService();
+  final _verificationCode = TextEditingController();
+  final _restaurantDescription = TextEditingController();
+  bool _identityBusy = false;
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _usernameController;
@@ -48,83 +52,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<void> _linkGoogleAccount() async {
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _bioController.dispose();
+    _usernameController.dispose();
+    _phoneController.dispose();
+    _verificationCode.dispose();
+    _restaurantDescription.dispose();
+    super.dispose();
+  }
+
+  Future<void> _identityAction(Future<String> Function() operation) async {
+    if (_identityBusy) return;
+    setState(() => _identityBusy = true);
     try {
-      final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      if (googleUser == null) return;
-
-      if (!mounted) return;
-      final user = context.read<AuthProvider>().user;
-      if (user == null) return;
-
-      final String? googlePhoto = googleUser.photoUrl;
-      final String googleEmail = googleUser.email;
-
-      final updateData = {
-        'emailVerified': true,
-        if (googlePhoto != null && googlePhoto.isNotEmpty)
-          'avatarUrl': googlePhoto,
-      };
-
-      final response = await _apiService.dio.put('/users/${user.id}', data: updateData);
-
-      if (!mounted) return;
-
-      if (response.data != null) {
-        context.read<AuthProvider>().updateUser(Map<String, dynamic>.from(response.data));
+      final message = await operation();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
-
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              const Icon(Icons.link_rounded, color: Colors.green, size: 26),
-              const SizedBox(width: 10),
-              Expanded(child: Text('¡Cuenta de Google Enlazada! 🔗', style: AppTextStyles.title)),
-            ],
-          ),
-          content: Text(
-            'Tu perfil de Foodie ha sido vinculado exitosamente con la cuenta de Google verificada: $googleEmail.',
-            style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Excelente', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              const Icon(Icons.info_outline_rounded, color: Colors.orange, size: 26),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Aviso de Vinculación', style: AppTextStyles.title)),
-            ],
-          ),
-          content: Text(
-            e.toString().replaceAll('Exception: ', ''),
-            style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Entendido', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      );
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+    } finally {
+      if (mounted) setState(() => _identityBusy = false);
     }
   }
 
@@ -287,24 +240,66 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
 
-              if (isFoodie) ...[
+              if (user != null) ...[
                 const SizedBox(height: 24),
                 const Divider(),
                 const SizedBox(height: 12),
-                Text('Enlazar Cuenta de Google 🔗', style: AppTextStyles.title),
+                Text('Verificación de correo', style: AppTextStyles.title),
                 const SizedBox(height: 6),
-                Text('Vincula tu perfil de SavorSync a tu cuenta de Google para iniciar sesión con un solo clic y sincronizar tu foto de perfil.', style: AppTextStyles.subtle),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    side: const BorderSide(color: AppColors.primary),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: _linkGoogleAccount,
-                  icon: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
-                  label: const Text('Enlazar con Google ahora 🔗', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                Text(
+                  user.emailVerified ? 'Correo verificado' : 'Verifica el correo de tu cuenta.',
+                  style: AppTextStyles.subtle,
                 ),
+                if (!user.emailVerified || isFoodie) ...[
+                  OutlinedButton(
+                    onPressed: _identityBusy ? null : () => _identityAction(() async {
+                      await _authService.sendVerificationCode();
+                      return 'Código enviado al correo de tu cuenta.';
+                    }),
+                    child: const Text('Enviar código al correo'),
+                  ),
+                  TextField(
+                    controller: _verificationCode,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: const InputDecoration(labelText: 'Código de verificación'),
+                  ),
+                  if (!user.emailVerified)
+                    OutlinedButton(
+                      onPressed: _identityBusy ? null : () => _identityAction(() async {
+                        final data = await _authService.verifyEmail(_verificationCode.text);
+                        if (mounted && context.read<AuthProvider>().user?.id == user.id) {
+                          context.read<AuthProvider>().updateUser(data);
+                        }
+                        return 'Correo verificado.';
+                      }),
+                      child: const Text('Confirmar correo'),
+                    ),
+                ],
+                if (isFoodie) ...[
+                  const SizedBox(height: 24),
+                  Text('Administración de restaurante', style: AppTextStyles.title),
+                  Text(
+                    'Indica qué establecimiento deseas administrar. Usa un código de correo vigente. Si se aprueba la solicitud, vuelve a iniciar sesión desde la web.',
+                    style: AppTextStyles.subtle,
+                  ),
+                  TextField(
+                    controller: _restaurantDescription,
+                    maxLines: 3,
+                    maxLength: 2000,
+                    decoration: const InputDecoration(labelText: 'Describe tu solicitud'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _identityBusy ? null : () => _identityAction(() async {
+                      await _authService.requestRestaurantAdmin(
+                        _verificationCode.text,
+                        _restaurantDescription.text,
+                      );
+                      return 'Solicitud registrada. Puedes seguirla en PQRS.';
+                    }),
+                    child: const Text('Solicitar administración de restaurante'),
+                  ),
+                ],
               ],
             ],
           ),

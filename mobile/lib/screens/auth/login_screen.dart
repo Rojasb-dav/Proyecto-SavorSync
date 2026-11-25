@@ -30,6 +30,41 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  void _showAuthAlert({
+    required String title,
+    required String message,
+    IconData icon = Icons.info_outline_rounded,
+    Color color = AppColors.primary,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title, style: AppTextStyles.title.copyWith(fontSize: 18))),
+          ],
+        ),
+        content: Text(
+          message,
+          style: AppTextStyles.body.copyWith(fontSize: 14, color: AppColors.textSecondary),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Entendido', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
@@ -43,46 +78,16 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => const RoleBasedShell()),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.error,
-          content: Text(auth.error ?? 'No se pudo iniciar sesión'),
-        ),
+      _showAuthAlert(
+        title: 'Aviso de Iniciar Sesión',
+        message: auth.error ?? 'No se pudo verificar las credenciales. Verifica tu correo y contraseña.',
+        icon: Icons.lock_outline_rounded,
+        color: AppColors.error,
       );
     }
   }
 
-  Future<void> _handleGoogleSignIn() async {
-    final auth = context.read<AuthProvider>();
-    try {
-      final ok = await auth.loginWithGoogle();
-      if (!mounted) return;
-      if (ok) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const RoleBasedShell()),
-        );
-      } else {
-        if (auth.error != null && auth.error!.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: AppColors.error,
-              content: Text(auth.error!),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.error,
-          content: Text('Error al conectar con Google: $e'),
-        ),
-      );
-    }
-  }
-
-  @override
+ @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
@@ -110,6 +115,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: AppTextStyles.subtle,
                       ).animate(delay: 80.ms).fadeIn(duration: 400.ms),
                       const SizedBox(height: 20),
+                      if (auth.sessionNotice != null) ...[
+                        Text(auth.sessionNotice!, style: AppTextStyles.body),
+                        const SizedBox(height: 12),
+                      ],
 
                       // Selector de Pestaña de Acceso (Foodie vs Admin)
                       Container(
@@ -268,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               side: const BorderSide(color: AppColors.divider),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                             ),
-                            onPressed: auth.loading ? null : _handleGoogleSignIn,
+                            onPressed: null,
                             icon: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
@@ -278,7 +287,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 24),
                             ),
                             label: const Text(
-                              'Continuar con Google (Solo Foodies)',
+                              'Google no disponible temporalmente',
                               style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
                             ),
                           ),
