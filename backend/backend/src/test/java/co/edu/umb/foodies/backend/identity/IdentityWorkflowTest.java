@@ -2,15 +2,17 @@ package co.edu.umb.foodies.backend.identity;
 
 import co.edu.umb.foodies.backend.model.Pqrs;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.controller.PqrsController;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.model.ClientSession;
+import co.edu.umb.foodies.backend.repository.NotificationRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
 import co.edu.umb.foodies.backend.repository.PqrsRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
-import co.edu.umb.foodies.backend.service.identity.EmailVerificationService;
-import co.edu.umb.foodies.backend.service.identity.IdentityService;
+import co.edu.umb.foodies.backend.service.EmailVerificationService;
+import co.edu.umb.foodies.backend.service.IdentityService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.mock.web.MockHttpServletRequest;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,7 +26,7 @@ class IdentityWorkflowTest {
         User user = foodie();
         var users = mock(UserRepository.class);
         var pqrs = mock(PqrsRepository.class);
-        var sessions = mock(AuthSessionRepository.class);
+        var sessions = mock(ClientSessionRepository.class);
         var verification = mock(EmailVerificationService.class);
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
         when(pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(
@@ -58,10 +60,13 @@ class IdentityWorkflowTest {
                 .build();
         var users = mock(UserRepository.class);
         var pqrs = mock(PqrsRepository.class);
-        var sessions = mock(AuthSessionRepository.class);
+        var sessions = mock(ClientSessionRepository.class);
         var verification = mock(EmailVerificationService.class);
         when(pqrs.findByIdForUpdate("request-id")).thenReturn(Optional.of(request));
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+
+        ClientSession session = ClientSession.builder().userId(user.getId()).isActive(true).build();
+        when(sessions.findAll()).thenReturn(List.of(session));
 
         var result = new IdentityService(users, pqrs, sessions, verification)
                 .approveRestaurantAdmin("request-id");
@@ -69,13 +74,14 @@ class IdentityWorkflowTest {
         assertEquals("restaurant_admin", result.getRole());
         assertEquals(Pqrs.PqrsStatus.resuelta, request.getEstado());
         assertNotNull(request.getFechaCierre());
-        verify(sessions).revokeAllByUserId(user.getId());
+        verify(sessions).save(session);
+        assertFalse(session.getIsActive());
     }
 
     @Test
     void restaurantRequestCannotBeApprovedForInactiveOrAlreadyPromotedAccount() {
         User user = foodie();
-        user.setRole(User.Role.moderador);
+        user.setRole(User.Role.restaurant_admin);
         Pqrs request = Pqrs.builder()
                 .id("request-id")
                 .clienteId(user.getId())
@@ -86,7 +92,7 @@ class IdentityWorkflowTest {
                 .build();
         var users = mock(UserRepository.class);
         var pqrs = mock(PqrsRepository.class);
-        var sessions = mock(AuthSessionRepository.class);
+        var sessions = mock(ClientSessionRepository.class);
         var verification = mock(EmailVerificationService.class);
         when(pqrs.findByIdForUpdate("request-id")).thenReturn(Optional.of(request));
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
@@ -94,7 +100,7 @@ class IdentityWorkflowTest {
         assertThrows(ResponseStatusException.class,
                 () -> new IdentityService(users, pqrs, sessions, verification)
                         .approveRestaurantAdmin("request-id"));
-        verify(sessions, never()).revokeAllByUserId(any());
+        verify(sessions, never()).save(any(ClientSession.class));
     }
 
     @Test
@@ -110,10 +116,11 @@ class IdentityWorkflowTest {
         var pqrs = mock(PqrsRepository.class);
         when(pqrs.findByIdForUpdate("request-id")).thenReturn(Optional.of(request));
 
-        var controller = new PqrsController(pqrs);
+        var notificationRepo = mock(NotificationRepository.class);
+        var controller = new co.edu.umb.foodies.backend.controller.PqrsController(pqrs, notificationRepo);
         assertThrows(ResponseStatusException.class,
                 () -> controller.updatePqrsStatus("request-id",
-                        Pqrs.builder().estado(Pqrs.PqrsStatus.resuelta).build()));
+                        Pqrs.builder().estado(Pqrs.PqrsStatus.resuelta).build(), new MockHttpServletRequest()));
         assertEquals(Pqrs.PqrsStatus.recibida, request.getEstado());
     }
 

@@ -1,6 +1,7 @@
 package co.edu.umb.foodies.backend.config;
 
 import co.edu.umb.foodies.backend.repository.UserRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
@@ -19,11 +20,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class CredentialConfigurationTest {
 
     private final UserRepository userRepository = mock(UserRepository.class);
+    private final EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
 
     private final ApplicationContextRunner context = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(DataSeeder.class)
             .withBean(UserRepository.class, () -> userRepository)
+            .withBean(EmployeeRepository.class, () -> employeeRepository)
             .withBean(PasswordEncoder.class, () -> mock(PasswordEncoder.class));
 
     @Test
@@ -78,8 +81,7 @@ class CredentialConfigurationTest {
     void developmentSeederRejectsEmptyPasswordBeforeAccessingDatabase() {
         context.withPropertyValues(
                 "spring.profiles.active=development",
-                "app.seed.moderator-enabled=true",
-                "app.seed.moderator-password="
+                "app.seed.moderator-enabled=true"
         ).run(application -> {
             assertThat(application).hasSingleBean(DataSeeder.class);
             assertThatThrownBy(

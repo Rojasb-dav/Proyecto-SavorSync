@@ -152,7 +152,7 @@ class AuthService {
         token.trim().isEmpty ||
         tokenType is! String ||
         tokenType.toLowerCase() != 'bearer' ||
-        (expiresInMs != null && (expiresInMs is! int || expiresInMs <= 0))) {
+        expiresInMs is! int || expiresInMs <= 0) {
       throw const FormatException('Respuesta de sesión inválida.');
     }
 

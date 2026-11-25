@@ -37,9 +37,11 @@ class AuthorizationMvcTest {
     @Autowired private MockMvc mvc;
 
     @MockBean private UserService userService;
-    @MockBean private AuthSessionRepository sessions;
+    @MockBean private ClientSessionRepository sessions;
+    @MockBean private EmployeeSessionRepository employeeSessions;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private UserRepository users;
+    @MockBean private EmployeeRepository employeeRepository;
     @MockBean private ReservationRepository reservations;
     @MockBean private RestaurantRepository restaurants;
     @MockBean private MenuItemRepository menu;
@@ -49,11 +51,16 @@ class AuthorizationMvcTest {
     @MockBean private CommentRepository comments;
     @MockBean private PostService postService;
     @MockBean private CloudinaryService cloudinary;
+    @MockBean private RestaurantImageRepository restaurantImageRepository;
 
     @Test
     void profileContactIsOnlyReturnedToItsOwner() throws Exception {
-        when(userService.getById(eq("owner"), anyString())).thenAnswer(call -> UserResponse.builder()
-                .id("owner").email("owner@example.test").phone("123").build());
+        when(userService.getById(eq("owner"), anyString())).thenAnswer(call -> {
+            String viewerId = call.getArgument(1);
+            boolean isOwner = "owner".equals(viewerId);
+            return UserResponse.builder()
+                .id("owner").email(isOwner ? "owner@example.test" : null).phone(isOwner ? "123" : null).build();
+        });
         mvc.perform(get("/api/v1/users/owner").with(user("another").roles("FOODIE")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").doesNotExist())
                 .andExpect(jsonPath("$.phone").doesNotExist());
@@ -66,7 +73,7 @@ class AuthorizationMvcTest {
         mvc.perform(post("/api/v1/files/upload")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/v1/posts").with(user("author").roles("FOODIE"))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"userId\":\"other\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
         verify(postService).createPost(any(PostDTO.class), eq("author"));
         verifyNoInteractions(cloudinary);
     }

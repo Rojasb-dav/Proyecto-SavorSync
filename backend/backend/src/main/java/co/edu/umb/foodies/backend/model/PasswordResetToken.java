@@ -19,7 +19,7 @@ public class PasswordResetToken {
     @Column(length = 36, nullable = false, updatable = false)
     private String id;
 
-    @Column(nullable = false, length = 6)
+    @Column(nullable = false, length = 255)
     private String code;
 
     @Column(nullable = false)

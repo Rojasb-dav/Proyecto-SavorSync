@@ -2,15 +2,17 @@ package co.edu.umb.foodies.backend.identity;
 
 import co.edu.umb.foodies.backend.dto.request.RegisterRequest;
 import co.edu.umb.foodies.backend.dto.request.UpdateProfileRequest;
-import co.edu.umb.foodies.backend.model.AuthSession;
+import co.edu.umb.foodies.backend.model.ClientSession;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeSessionRepository;
 import co.edu.umb.foodies.backend.repository.PasswordResetTokenRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import co.edu.umb.foodies.backend.service.AuthService;
-import co.edu.umb.foodies.backend.service.identity.EmailVerificationService;
-import co.edu.umb.foodies.backend.service.identity.IdentityService;
+import co.edu.umb.foodies.backend.service.EmailVerificationService;
+import co.edu.umb.foodies.backend.service.IdentityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
@@ -47,7 +49,9 @@ class IdentityP04Test {
                 """, RegisterRequest.class);
 
         UserRepository users = mock(UserRepository.class);
-        AuthSessionRepository sessions = mock(AuthSessionRepository.class);
+        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
+        EmployeeSessionRepository employeeSessionRepository = mock(EmployeeSessionRepository.class);
         PasswordResetTokenRepository resets = mock(PasswordResetTokenRepository.class);
         PasswordEncoder passwords = mock(PasswordEncoder.class);
         JwtUtil jwt = mock(JwtUtil.class);
@@ -67,12 +71,12 @@ class IdentityP04Test {
         when(jwt.sessionTokenKey("signed")).thenReturn("v1:hash");
         when(http.getHeader("X-Platform")).thenReturn("web");
 
-        AuthService service = new AuthService(users, sessions, resets, passwords, jwt, mail);
+        AuthService service = new AuthService(users, employeeRepository, sessions, employeeSessionRepository, resets, passwords, jwt, mail);
         var response = service.register(request, http);
 
         assertEquals("foodie", response.getUser().getRole());
         assertEquals("Bearer", response.getTokenType());
-        verify(sessions).saveAndFlush(any(AuthSession.class));
+        verify(sessions).saveAndFlush(any(ClientSession.class));
         verify(users).save(argThat(user -> user.getRole() == User.Role.foodie
                 && Boolean.FALSE.equals(user.getEmailVerified())));
     }
@@ -85,7 +89,9 @@ class IdentityP04Test {
                 """, RegisterRequest.class);
 
         UserRepository users = mock(UserRepository.class);
-        AuthSessionRepository sessions = mock(AuthSessionRepository.class);
+        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+        ClientSessionRepository sessions = mock(ClientSessionRepository.class);
+        EmployeeSessionRepository employeeSessionRepository = mock(EmployeeSessionRepository.class);
         PasswordResetTokenRepository resets = mock(PasswordResetTokenRepository.class);
         PasswordEncoder passwords = mock(PasswordEncoder.class);
         JwtUtil jwt = mock(JwtUtil.class);
@@ -93,17 +99,17 @@ class IdentityP04Test {
         when(users.existsByEmail("moderator@example.test")).thenReturn(false);
         when(users.existsByUsername("moderator1")).thenReturn(false);
         when(passwords.encode("secret1")).thenReturn("encoded");
-        when(users.save(any(User.class))).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
+        when(employeeRepository.save(any(co.edu.umb.foodies.backend.model.Employee.class))).thenAnswer(invocation -> {
+            co.edu.umb.foodies.backend.model.Employee user = invocation.getArgument(0);
             user.setId("moderator-id");
             return user;
         });
 
-        var result = new AuthService(users, sessions, resets, passwords, jwt, mail)
+        var result = new AuthService(users, employeeRepository, sessions, employeeSessionRepository, resets, passwords, jwt, mail)
                 .createModerator(request);
 
         assertEquals("moderador", result.getRole());
-        verify(sessions, never()).saveAndFlush(any(AuthSession.class));
+        verify(sessions, never()).saveAndFlush(any(ClientSession.class));
     }
 
     @Test

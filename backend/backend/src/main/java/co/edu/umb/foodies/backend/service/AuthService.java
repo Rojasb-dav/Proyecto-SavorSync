@@ -57,6 +57,9 @@ public class AuthService {
         }
 
         User.Role role = User.Role.foodie;
+        if (User.Role.restaurant_admin.name().equalsIgnoreCase(req.getRole())) {
+             role = User.Role.restaurant_admin;
+        }
 
         User user = User.builder()
                 .id(UUID.randomUUID().toString())
@@ -79,12 +82,12 @@ public class AuthService {
         User user = userRepository.findById(userId).orElse(null);
         if (user != null) {
             if (!Boolean.TRUE.equals(user.getIsActive())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
-            return UserResponse.from(user);
+            return UserResponse.fromSelf(user);
         }
         Employee employee = employeeRepository.findById(userId).orElse(null);
         if (employee != null) {
             if (!Boolean.TRUE.equals(employee.getIsActive())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
-            return UserResponse.from(employee);
+            return UserResponse.fromSelf(employee);
         }
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
     }
@@ -109,7 +112,7 @@ public class AuthService {
                 .build();
 
         employee = employeeRepository.save(employee);
-        return UserResponse.from(employee);
+        return UserResponse.fromSelf(employee);
     }
 
     @Transactional
@@ -164,6 +167,7 @@ public class AuthService {
     public void forgotPassword(String email) {
         userRepository.findByEmail(email.trim().toLowerCase()).ifPresent(user -> {
             String code = String.format("%06d", new SecureRandom().nextInt(900000) + 100000);
+            String encodedCode = passwordEncoder.encode(code);
             
             try {
                 passwordResetTokenRepository.deleteByEmail(user.getEmail());
@@ -172,11 +176,11 @@ public class AuthService {
                 PasswordResetToken resetToken = PasswordResetToken.builder()
                         .id(UUID.randomUUID().toString())
                         .email(user.getEmail())
-                        .code(code)
+                        .code(encodedCode)
                         .expiresAt(LocalDateTime.now().plusMinutes(15))
                         .build();
 
-                passwordResetTokenRepository.save(resetToken);
+                passwordResetTokenRepository.saveAndFlush(resetToken);
 
                 CompletableFuture.runAsync(() -> sendResetEmail(user.getEmail(), code));
             } catch (Exception e) {
@@ -186,6 +190,7 @@ public class AuthService {
 
         employeeRepository.findByEmail(email.trim().toLowerCase()).ifPresent(employee -> {
             String code = String.format("%06d", new SecureRandom().nextInt(900000) + 100000);
+            String encodedCode = passwordEncoder.encode(code);
 
             try {
                 passwordResetTokenRepository.deleteByEmail(employee.getEmail());
@@ -194,11 +199,11 @@ public class AuthService {
                 PasswordResetToken resetToken = PasswordResetToken.builder()
                         .id(UUID.randomUUID().toString())
                         .email(employee.getEmail())
-                        .code(code)
+                        .code(encodedCode)
                         .expiresAt(LocalDateTime.now().plusMinutes(15))
                         .build();
 
-                passwordResetTokenRepository.save(resetToken);
+                passwordResetTokenRepository.saveAndFlush(resetToken);
 
                 CompletableFuture.runAsync(() -> sendResetEmail(employee.getEmail(), code));
             } catch (Exception e) {
@@ -209,7 +214,9 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(String email, String token, String newPassword) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByEmailAndCode(email.trim().toLowerCase(), token.trim())
+        PasswordResetToken resetToken = passwordResetTokenRepository.findAll().stream()
+                .filter(t -> t.getEmail().equalsIgnoreCase(email.trim()) && passwordEncoder.matches(token.trim(), t.getCode()))
+                .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código de verificación inválido o expirado"));
 
         if (resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
@@ -248,50 +255,56 @@ public class AuthService {
     private AuthResponse buildAuthResponse(User user, HttpServletRequest httpReq) {
         JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(user.getId(), user.getEmail(), user.getRole().name());
 
-        try {
-            ClientSession session = ClientSession.builder()
-                    .id(UUID.randomUUID().toString())
-                    .userId(user.getId())
-                    .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
-                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
-                    .isActive(true)
-                    .platform(ClientSession.Platform.mobile)
-                    .expiresAt(tokenInfo.expiresAt())
-                    .build();
-
-            clientSessionRepository.save(session);
-        } catch (Exception e) {
-            System.err.println("WARN: No se pudo guardar la sesión de cliente: " + e.getMessage());
+        long ttl = java.time.Duration.between(java.time.Instant.now(), tokenInfo.expiresAt()).toMillis();
+        if (ttl <= 0) {
+            throw new IllegalStateException("Invalid token lifetime");
         }
+
+        ClientSession session = ClientSession.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(user.getId())
+                .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
+                .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
+                .isActive(true)
+                .platform(ClientSession.Platform.mobile)
+                .expiresAt(tokenInfo.expiresAt())
+                .build();
+
+        clientSessionRepository.saveAndFlush(session);
 
         return AuthResponse.builder()
                 .token(tokenInfo.token())
-                .user(UserResponse.from(user))
+                .tokenType("Bearer")
+                .expiresInMs(ttl)
+                .user(UserResponse.fromSelf(user))
                 .build();
     }
 
     private AuthResponse buildEmployeeAuthResponse(Employee employee, HttpServletRequest httpReq) {
         JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(employee.getId(), employee.getEmail(), employee.getRole().name());
 
-        try {
-            EmployeeSession session = EmployeeSession.builder()
-                    .id(UUID.randomUUID().toString())
-                    .employeeId(employee.getId())
-                    .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
-                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
-                    .isActive(true)
-                    .platform(EmployeeSession.Platform.web_admin)
-                    .expiresAt(tokenInfo.expiresAt())
-                    .build();
-
-            employeeSessionRepository.save(session);
-        } catch (Exception e) {
-            System.err.println("WARN: No se pudo guardar la sesión de empleado: " + e.getMessage());
+        long ttl = java.time.Duration.between(java.time.Instant.now(), tokenInfo.expiresAt()).toMillis();
+        if (ttl <= 0) {
+            throw new IllegalStateException("Invalid token lifetime");
         }
+
+        EmployeeSession session = EmployeeSession.builder()
+                .id(UUID.randomUUID().toString())
+                .employeeId(employee.getId())
+                .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
+                .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
+                .isActive(true)
+                .platform(EmployeeSession.Platform.web_admin)
+                .expiresAt(tokenInfo.expiresAt())
+                .build();
+
+        employeeSessionRepository.saveAndFlush(session);
 
         return AuthResponse.builder()
                 .token(tokenInfo.token())
-                .user(UserResponse.from(employee))
+                .tokenType("Bearer")
+                .expiresInMs(ttl)
+                .user(UserResponse.fromSelf(employee))
                 .build();
     }
 

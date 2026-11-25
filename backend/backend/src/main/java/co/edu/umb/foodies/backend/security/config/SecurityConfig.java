@@ -41,14 +41,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public CorsConfigurationSource corsConfigurationSource(
+            @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:http://localhost:8080,http://127.0.0.1:8080}") String[] allowedOrigins) {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOriginPatterns(List.of(
-                "https://proyecto-savorsync-mobile.vercel.app",
-                "https://*.vercel.app",
-                "http://localhost:*",
-                "http://127.0.0.1:*"
-        ));
+        cfg.setAllowedOriginPatterns(java.util.Arrays.asList(allowedOrigins));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Platform", "Accept", "Origin"));
         cfg.setExposedHeaders(List.of("Authorization"));
@@ -73,7 +69,7 @@ public class SecurityConfig {
                 .requestMatchers(JwtAuthenticationFilter.PUBLIC_AUTH_ENDPOINTS).permitAll()
                 .requestMatchers("/api/files/view/**", "/api/v1/files/view/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/restaurants/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/users").hasAnyRole("MODERADOR", "ADMIN_SISTEMA")
+                .requestMatchers(HttpMethod.GET, "/api/v1/users", "/api/v1/users/**").authenticated()
                 .requestMatchers(HttpMethod.PUT, "/api/v1/users/*/status", "/api/v1/users/*/toggle-active")
                     .hasAnyRole("MODERADOR", "ADMIN_SISTEMA")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/users/*").hasRole("ADMIN_SISTEMA")

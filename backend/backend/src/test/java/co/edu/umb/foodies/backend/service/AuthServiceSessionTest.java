@@ -3,10 +3,12 @@ package co.edu.umb.foodies.backend.service;
 import co.edu.umb.foodies.backend.dto.request.LoginRequest;
 import co.edu.umb.foodies.backend.dto.request.RegisterRequest;
 import co.edu.umb.foodies.backend.dto.response.AuthResponse;
-import co.edu.umb.foodies.backend.model.AuthSession;
+import co.edu.umb.foodies.backend.model.ClientSession;
 import co.edu.umb.foodies.backend.model.PasswordResetToken;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeSessionRepository;
 import co.edu.umb.foodies.backend.repository.PasswordResetTokenRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
@@ -31,6 +33,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,6 +41,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceSessionTest {
@@ -49,7 +54,9 @@ class AuthServiceSessionTest {
     private static final String RESET_CODE = "123456";
 
     @Mock private UserRepository users;
-    @Mock private AuthSessionRepository sessions;
+    @Mock private EmployeeRepository employeeRepository;
+    @Mock private ClientSessionRepository clientSessionRepository;
+    @Mock private EmployeeSessionRepository employeeSessionRepository;
     @Mock private PasswordResetTokenRepository resetTokens;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JavaMailSender mailSender;
@@ -63,7 +70,7 @@ class AuthServiceSessionTest {
         byte[] key = new byte[32];
         new SecureRandom().nextBytes(key);
         jwtUtil = new JwtUtil(Base64.getEncoder().encodeToString(key), EXPIRATION_MS);
-        service = new AuthService(users, sessions, resetTokens, passwordEncoder, jwtUtil, mailSender);
+        service = new AuthService(users, employeeRepository, clientSessionRepository, employeeSessionRepository, resetTokens, passwordEncoder, jwtUtil, mailSender);
         user = User.builder()
                 .id(UUID.randomUUID().toString())
                 .email(EMAIL)
@@ -83,9 +90,9 @@ class AuthServiceSessionTest {
 
         AuthResponse response = service.login(loginRequest(), request);
 
-        ArgumentCaptor<AuthSession> saved = ArgumentCaptor.forClass(AuthSession.class);
-        verify(sessions).saveAndFlush(saved.capture());
-        AuthSession session = saved.getValue();
+        ArgumentCaptor<ClientSession> saved = ArgumentCaptor.forClass(ClientSession.class);
+        verify(clientSessionRepository).saveAndFlush(saved.capture());
+        ClientSession session = saved.getValue();
         String jwt = response.getToken();
         var claims = jwtUtil.parse(jwt);
         String sha256 = HexFormat.of().formatHex(
@@ -105,7 +112,7 @@ class AuthServiceSessionTest {
     void loginPropagatesPersistenceFailure() {
         allowLogin();
         var error = new DataIntegrityViolationException("No se pudo persistir la sesión");
-        when(sessions.saveAndFlush(any(AuthSession.class))).thenThrow(error);
+        when(clientSessionRepository.saveAndFlush(any(ClientSession.class))).thenThrow(error);
 
         assertThatThrownBy(() -> service.login(loginRequest(), new MockHttpServletRequest()))
                 .isSameAs(error);
@@ -125,7 +132,7 @@ class AuthServiceSessionTest {
             return registered;
         });
         var error = new DataIntegrityViolationException("No se pudo persistir la sesión");
-        when(sessions.saveAndFlush(any(AuthSession.class))).thenThrow(error);
+        when(clientSessionRepository.saveAndFlush(any(ClientSession.class))).thenThrow(error);
 
         assertThatThrownBy(() -> service.register(request, new MockHttpServletRequest()))
                 .isSameAs(error);
@@ -135,50 +142,56 @@ class AuthServiceSessionTest {
     void logoutRevokesSessionFoundByDigest() {
         String token = jwtUtil.issueToken(user.getId(), EMAIL, user.getRole().name()).token();
         String key = jwtUtil.sessionTokenKey(token);
-        AuthSession session = AuthSession.builder()
+        ClientSession session = ClientSession.builder()
                 .userId(user.getId())
                 .sessionToken(key)
                 .isActive(true)
                 .build();
-        when(sessions.findBySessionTokenAndIsActiveTrue(key)).thenReturn(Optional.of(session));
+        when(clientSessionRepository.findBySessionTokenAndIsActiveTrue(key)).thenReturn(Optional.of(session));
 
         service.logout(token);
 
         assertThat(session.getIsActive()).isFalse();
-        verify(sessions).save(session);
+        verify(clientSessionRepository).save(session);
     }
 
     @Test
     void resettingPasswordRevokesAllSessionsForThatAccount() {
         PasswordResetToken code = resetToken(LocalDateTime.now().plusMinutes(1));
-        when(resetTokens.findByEmailAndCode(EMAIL, RESET_CODE)).thenReturn(Optional.of(code));
-        when(users.findByEmailForUpdate(EMAIL)).thenReturn(Optional.of(user));
+        when(resetTokens.findAll()).thenReturn(List.of(code));
+        when(passwordEncoder.matches(RESET_CODE, code.getCode())).thenReturn(true);
+        when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
         String newPassword = "nueva-contraseña-de-prueba";
         String newHash = "nuevo-hash-de-prueba";
         when(passwordEncoder.encode(newPassword)).thenReturn(newHash);
+
+        ClientSession s1 = ClientSession.builder().userId(user.getId()).isActive(true).build();
+        when(clientSessionRepository.findAll()).thenReturn(List.of(s1));
 
         service.resetPassword(EMAIL, RESET_CODE, newPassword);
 
         verify(users).save(user);
         verify(resetTokens).delete(code);
-        verify(sessions).revokeAllByUserId(user.getId());
+        verify(clientSessionRepository).save(s1);
+        assertThat(s1.getIsActive()).isFalse();
         assertThat(user.getPassword()).isEqualTo(newHash);
     }
 
     @Test
     void expiredResetCodeDoesNotRevokeSessionsOrUpdateUser() {
         PasswordResetToken code = resetToken(LocalDateTime.now().minusMinutes(1));
-        when(resetTokens.findByEmailAndCode(EMAIL, RESET_CODE)).thenReturn(Optional.of(code));
+        when(resetTokens.findAll()).thenReturn(List.of(code));
+        when(passwordEncoder.matches(RESET_CODE, code.getCode())).thenReturn(true);
 
         assertThatThrownBy(() -> service.resetPassword(EMAIL, RESET_CODE, PASSWORD))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
 
-        verifyNoInteractions(sessions, users, passwordEncoder);
+        verifyNoInteractions(clientSessionRepository, users);
     }
 
     private void allowLogin() {
-        when(users.findByEmailForUpdate(EMAIL)).thenReturn(Optional.of(user));
+        when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
         when(passwordEncoder.matches(PASSWORD, ENCODED_PASSWORD)).thenReturn(true);
     }
 

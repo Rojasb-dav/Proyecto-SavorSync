@@ -28,20 +28,20 @@ public class UserService {
 
     public List<UserResponse> getAllUsers(String authUserId) {
         return userRepository.findAll().stream()
-                .map(u -> UserResponse.from(u, authUserId))
+                .map(u -> UserResponse.fromPublic(u, authUserId))
                 .toList();
     }
 
     public UserResponse getById(String id, String authUserId) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return UserResponse.from(user, authUserId);
+        return UserResponse.fromPublic(user, authUserId);
     }
 
     public UserResponse getByUsername(String username, String authUserId) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return UserResponse.from(user, authUserId);
+        return UserResponse.fromPublic(user, authUserId);
     }
 
     @Transactional
@@ -64,7 +64,7 @@ public class UserService {
             user.setUsername(req.getUsername());
         }
 
-        return UserResponse.from(userRepository.save(user));
+        return UserResponse.fromSelf(userRepository.save(user));
     }
 
     @Transactional
@@ -75,7 +75,7 @@ public class UserService {
         User user = userRepository.findByIdForUpdate(targetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
         user.setAvatarUrl(avatarUrl);
-        return UserResponse.from(userRepository.save(user));
+        return UserResponse.fromSelf(userRepository.save(user));
     }
 
     @Transactional
@@ -102,7 +102,7 @@ public class UserService {
                     clientSessionRepository.save(s);
                 });
         }
-        return UserResponse.from(saved);
+        return UserResponse.fromPublic(saved, null);
     }
 
     @Transactional

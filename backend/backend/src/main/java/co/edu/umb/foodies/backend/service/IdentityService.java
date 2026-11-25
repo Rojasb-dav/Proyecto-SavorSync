@@ -38,7 +38,7 @@ public class IdentityService {
         var user = activeUserForUpdate(userId);
         verification.requireProof(user, code);
         user.setEmailVerified(true);
-        return UserResponse.from(user);
+        return UserResponse.fromSelf(user);
     }
 
     @Transactional
@@ -88,7 +88,7 @@ public class IdentityService {
         request.setRespuesta("Solicitud aprobada. Vuelve a iniciar sesión desde la aplicación web.");
         request.setFechaGestion(now);
         request.setFechaCierre(now);
-        return UserResponse.from(user);
+        return UserResponse.fromSelf(user);
     }
 
     public static boolean isRestaurantRequest(String subject) {
