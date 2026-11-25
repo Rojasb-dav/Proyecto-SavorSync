@@ -30,7 +30,7 @@ public class FileController {
         }
 
         String contentType = file.getContentType();
-        if (contentType != null && !contentType.startsWith("image/") && !contentType.startsWith("application/octet-stream")) {
+        if (contentType != null && !contentType.startsWith("image/")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Formato de archivo no soportado. Sólo se permiten imágenes.");
         }
 
