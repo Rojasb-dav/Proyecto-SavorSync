@@ -13,6 +13,7 @@ import java.util.List;
 public interface PostRepository extends JpaRepository<Post, String> {
     List<Post> findByUserOrderByCreatedAtDesc(User user);
     List<Post> findAllByOrderByCreatedAtDesc();
+    List<Post> findByRestaurantId(String restaurantId);
 
     @Query("""
             select count(p) from Post p
