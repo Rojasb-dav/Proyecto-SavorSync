@@ -1,10 +1,12 @@
 package co.edu.umb.foodies.backend.security.jwt;
 
-import co.edu.umb.foodies.backend.model.AuthSession;
+import co.edu.umb.foodies.backend.model.ClientSession;
+import co.edu.umb.foodies.backend.model.EmployeeSession;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeSessionRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
-import co.edu.umb.foodies.backend.security.RestSecurityErrors;
+import co.edu.umb.foodies.backend.repository.EmployeeRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -39,11 +41,13 @@ class JwtAuthenticationFilterTest {
 
     private final String jwtSecret = UUID.randomUUID().toString();
     private final JwtUtil jwtUtil = new JwtUtil(jwtSecret, 60_000);
-    private final AuthSessionRepository sessions = mock(AuthSessionRepository.class);
+    private final ClientSessionRepository clientSessions = mock(ClientSessionRepository.class);
+    private final EmployeeSessionRepository employeeSessions = mock(EmployeeSessionRepository.class);
     private final UserRepository users = mock(UserRepository.class);
+    private final EmployeeRepository employees = mock(EmployeeRepository.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final JwtAuthenticationFilter filter =
-            new JwtAuthenticationFilter(jwtUtil, sessions, users, new RestSecurityErrors(objectMapper));
+            new JwtAuthenticationFilter(jwtUtil, clientSessions, employeeSessions, users, employees, objectMapper);
 
     private final JwtUtil.IssuedToken issued = jwtUtil.issueToken(USER_ID, null, ROLE);
 
@@ -70,21 +74,21 @@ class JwtAuthenticationFilterTest {
     @Test
     void missingOrRevokedSessionIsRejectedEvenOnPublicEndpoint() throws Exception {
         assertRejected(PUBLIC_PATH, issued.token());
-        verifyNoInteractions(users);
+        verifyNoInteractions(users, employees);
     }
 
     @Test
     void expiredSessionIsRejectedWhileJwtIsStillCurrent() throws Exception {
         storeSession(USER_ID, Instant.now().minusSeconds(1));
         assertRejected(PRIVATE_PATH, issued.token());
-        verifyNoInteractions(users);
+        verifyNoInteractions(users, employees);
     }
 
     @Test
     void sessionMustBelongToJwtSubject() throws Exception {
         storeSession("another-account", issued.expiresAt());
         assertRejected(PRIVATE_PATH, issued.token());
-        verifyNoInteractions(users);
+        verifyNoInteractions(users, employees);
     }
 
     @Test
@@ -111,7 +115,32 @@ class JwtAuthenticationFilterTest {
                 .signWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)), SignatureAlgorithm.HS256)
                 .compact();
         assertRejected(PRIVATE_PATH, expired);
-        verifyNoInteractions(sessions, users);
+        verifyNoInteractions(clientSessions, employeeSessions, users, employees);
+    }
+
+    @Test
+    void unverifiedAccountReceivesOnlyRestrictedAuthority() throws Exception {
+        storeSession(USER_ID, issued.expiresAt());
+        when(users.findById(USER_ID)).thenReturn(Optional.of(
+                User.builder().id(USER_ID).role(User.Role.foodie)
+                        .isActive(true).emailVerified(false).build()));
+        var chain = new MockFilterChain();
+
+        doFilter("GET", PRIVATE_PATH, issued.token(), chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
+                .extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .containsExactly("ROLE_UNVERIFIED");
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void prefixedSimilarAuthPathIsNotTreatedAsPublic() throws Exception {
+        var chain = new MockFilterChain();
+        var response = doFilter("POST", "/api/v1/auth/login-extra", issued.token(), chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chain.getRequest()).isNull();
     }
 
     @Test
@@ -119,7 +148,7 @@ class JwtAuthenticationFilterTest {
         var chain = new MockFilterChain();
         doFilter("GET", PUBLIC_PATH, null, chain);
         assertThat(chain.getRequest()).isNotNull();
-        verifyNoInteractions(sessions, users);
+        verifyNoInteractions(clientSessions, employeeSessions, users, employees);
     }
 
     @Test
@@ -127,12 +156,12 @@ class JwtAuthenticationFilterTest {
         var chain = new MockFilterChain();
         doFilter("POST", "/api/v1/auth/login", issued.token(), chain);
         assertThat(chain.getRequest()).isNotNull();
-        verifyNoInteractions(sessions, users);
+        verifyNoInteractions(clientSessions, employeeSessions, users, employees);
     }
 
     @Test
     void unavailableSessionStoreIsNotInterpretedAsRevocation() throws Exception {
-        when(sessions.findBySessionTokenAndIsActiveTrue(jwtUtil.sessionTokenKey(issued.token())))
+        when(clientSessions.findBySessionTokenAndIsActiveTrue(jwtUtil.sessionTokenKey(issued.token())))
                 .thenThrow(new DataAccessResourceFailureException("detalle interno de prueba"));
         var chain = new MockFilterChain();
         var response = doFilter("GET", PRIVATE_PATH, issued.token(), chain);
@@ -167,12 +196,11 @@ class JwtAuthenticationFilterTest {
 
     private void storeSession(String userId, Instant expiresAt) {
         String key = jwtUtil.sessionTokenKey(issued.token());
-        when(sessions.findBySessionTokenAndIsActiveTrue(key)).thenReturn(Optional.of(
-                AuthSession.builder().userId(userId).sessionToken(key).expiresAt(expiresAt).isActive(true).build()
-        ));
+        when(clientSessions.findBySessionTokenAndIsActiveTrue(key))
+                .thenReturn(Optional.of(ClientSession.builder().userId(userId).sessionToken(key).expiresAt(expiresAt).isActive(true).build()));
     }
 
     private User account(boolean active, User.Role role) {
-        return User.builder().id(USER_ID).isActive(active).role(role).build();
+        return User.builder().id(USER_ID).isActive(active).role(role).emailVerified(true).build();
     }
 }

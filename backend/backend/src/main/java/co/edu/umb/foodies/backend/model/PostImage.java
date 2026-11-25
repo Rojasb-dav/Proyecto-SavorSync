@@ -15,13 +15,13 @@ import java.util.UUID;
 public class PostImage {
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "publicacion_id", length = 36, nullable = false)
+    @Column(name = "publicacion_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String postId;
 
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clientId;
 
     @Column(name = "url", nullable = false, length = 500)
@@ -30,7 +30,7 @@ public class PostImage {
     @Column(name = "cloudinary_id", length = 255)
     private String cloudinaryId;
 
-    @Column(name = "orden")
+    @Column(name = "orden", columnDefinition = "TINYINT")
     @Builder.Default
     private Integer orderIndex = 0;
 

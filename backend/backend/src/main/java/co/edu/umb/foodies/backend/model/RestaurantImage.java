@@ -19,13 +19,13 @@ public class RestaurantImage {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "restaurante_id", length = 36, nullable = false)
+    @Column(name = "restaurante_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String restaurantId;
 
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clientId;
 
     @Column(name = "url", nullable = false, length = 500)
@@ -35,11 +35,11 @@ public class RestaurantImage {
     private String cloudinaryId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo", nullable = false)
+    @Column(name = "tipo", nullable = false, columnDefinition = "ENUM('portada','galeria','item_menu')")
     @Builder.Default
     private ImageType type = ImageType.galeria;
 
-    @Column(name = "orden")
+    @Column(name = "orden", columnDefinition = "TINYINT")
     @Builder.Default
     private Integer orderIndex = 0;
 

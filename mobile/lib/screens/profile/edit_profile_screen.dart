@@ -20,7 +20,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
-  final _verificationCode = TextEditingController();
   final _restaurantDescription = TextEditingController();
   bool _identityBusy = false;
   late TextEditingController _nameController;
@@ -58,7 +57,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _bioController.dispose();
     _usernameController.dispose();
     _phoneController.dispose();
-    _verificationCode.dispose();
     _restaurantDescription.dispose();
     super.dispose();
   }
@@ -91,8 +89,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       String? finalAvatarUrl = _avatarUrl;
 
       if (_avatarFile != null) {
-        final uploaded = await CloudinaryService.uploadImageXFile(_avatarFile!);
-        if (uploaded != null) finalAvatarUrl = uploaded;
+        finalAvatarUrl = await CloudinaryService.uploadImageXFile(_avatarFile!);
       }
 
       final updateData = {
@@ -250,53 +247,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   user.emailVerified ? 'Correo verificado' : 'Verifica el correo de tu cuenta.',
                   style: AppTextStyles.subtle,
                 ),
-                if (!user.emailVerified || isFoodie) ...[
-                  OutlinedButton(
-                    onPressed: _identityBusy ? null : () => _identityAction(() async {
-                      await _authService.sendVerificationCode();
-                      return 'Código enviado al correo de tu cuenta.';
-                    }),
-                    child: const Text('Enviar código al correo'),
-                  ),
-                  TextField(
-                    controller: _verificationCode,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    decoration: const InputDecoration(labelText: 'Código de verificación'),
-                  ),
-                  if (!user.emailVerified)
-                    OutlinedButton(
-                      onPressed: _identityBusy ? null : () => _identityAction(() async {
-                        final data = await _authService.verifyEmail(_verificationCode.text);
-                        if (mounted && context.read<AuthProvider>().user?.id == user.id) {
-                          context.read<AuthProvider>().updateUser(data);
-                        }
-                        return 'Correo verificado.';
-                      }),
-                      child: const Text('Confirmar correo'),
-                    ),
-                ],
-                if (isFoodie) ...[
+                if (isFoodie && user.emailVerified) ...[
                   const SizedBox(height: 24),
                   Text('Administración de restaurante', style: AppTextStyles.title),
                   Text(
-                    'Indica qué establecimiento deseas administrar. Usa un código de correo vigente. Si se aprueba la solicitud, vuelve a iniciar sesión desde la web.',
+                    'Describe el establecimiento que deseas administrar. El acceso administrativo se habilitará después de la aprobación.',
                     style: AppTextStyles.subtle,
                   ),
                   TextField(
                     controller: _restaurantDescription,
+                    onChanged: (_) => setState(() {}),
                     maxLines: 3,
                     maxLength: 2000,
                     decoration: const InputDecoration(labelText: 'Describe tu solicitud'),
                   ),
                   OutlinedButton(
-                    onPressed: _identityBusy ? null : () => _identityAction(() async {
-                      await _authService.requestRestaurantAdmin(
-                        _verificationCode.text,
-                        _restaurantDescription.text,
-                      );
-                      return 'Solicitud registrada. Puedes seguirla en PQRS.';
-                    }),
+                    onPressed: _identityBusy || _restaurantDescription.text.trim().isEmpty
+                        ? null
+                        : () => _identityAction(() async {
+                              await _authService.requestRestaurantAdmin(
+                                _restaurantDescription.text,
+                              );
+                              return 'Solicitud registrada. Puedes seguirla en PQRS.';
+                            }),
                     child: const Text('Solicitar administración de restaurante'),
                   ),
                 ],

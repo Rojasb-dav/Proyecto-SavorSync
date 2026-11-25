@@ -24,22 +24,22 @@ public class Reservation {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
     @JsonProperty("restaurantId")
     @JsonAlias({"restaurante_id", "restaurant_id", "restaurantId"})
-    @Column(name = "restaurante_id", length = 36, nullable = false)
+    @Column(name = "restaurante_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String restaurantId;
 
     @JsonProperty("clienteId")
     @JsonAlias({"userId", "cliente_id", "user_id", "clienteId"})
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clienteId;
 
     @JsonProperty("numPersonas")
     @JsonAlias({"guests", "num_personas", "numPersonas"})
-    @Column(name = "num_personas", nullable = false)
+    @Column(name = "num_personas", nullable = false, columnDefinition = "TINYINT")
     private Integer numPersonas;
 
     @JsonProperty("fechaReserva")
@@ -55,7 +55,7 @@ public class Reservation {
     @JsonProperty("estado")
     @JsonAlias({"status", "estado"})
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado", nullable = false)
+    @Column(name = "estado", nullable = false, columnDefinition = "ENUM('pendiente','confirmada','cancelada','completada')")
     private ReservationStatus estado;
 
     @JsonProperty("notas")

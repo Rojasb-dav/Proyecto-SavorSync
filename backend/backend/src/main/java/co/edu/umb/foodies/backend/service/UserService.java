@@ -25,23 +25,29 @@ public class UserService {
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
     private final ClientSessionRepository clientSessionRepository;
+    private final AccountIdentityRegistry identities;
+    private final CloudinaryAssetRegistry assetRegistry;
 
     public List<UserResponse> getAllUsers(String authUserId) {
         return userRepository.findAll().stream()
-                .map(u -> UserResponse.from(u, authUserId))
+                .map(u -> UserResponse.fromPublic(u, authUserId))
                 .toList();
     }
 
     public UserResponse getById(String id, String authUserId) {
         User user = userRepository.findById(id)
+                .filter(found -> Boolean.TRUE.equals(found.getIsActive())
+                        || id.equals(authUserId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return UserResponse.from(user, authUserId);
+        return UserResponse.fromPublic(user, authUserId);
     }
 
     public UserResponse getByUsername(String username, String authUserId) {
         User user = userRepository.findByUsername(username)
+                .filter(found -> Boolean.TRUE.equals(found.getIsActive())
+                        || found.getId().equals(authUserId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return UserResponse.from(user, authUserId);
+        return UserResponse.fromPublic(user, authUserId);
     }
 
     @Transactional
@@ -55,16 +61,22 @@ public class UserService {
         if (req.getFullName() != null) user.setFullName(req.getFullName());
         if (req.getBio() != null) user.setBio(req.getBio());
         if (req.getPhone() != null) user.setPhone(req.getPhone());
-        if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()) user.setAvatarUrl(req.getAvatarUrl());
-
-        if (req.getUsername() != null && !req.getUsername().equals(user.getUsername())) {
-            if (userRepository.existsByUsername(req.getUsername())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
-            }
-            user.setUsername(req.getUsername());
+        if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()
+                && !req.getAvatarUrl().equals(user.getAvatarUrl())) {
+            requireOwnedAvatar(targetId, req.getAvatarUrl());
+            user.setAvatarUrl(req.getAvatarUrl());
         }
 
-        return UserResponse.from(userRepository.save(user));
+        if (req.getUsername() != null && !req.getUsername().equals(user.getUsername())) {
+            String username = req.getUsername().trim();
+            if (userRepository.existsByUsername(username)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "El nombre de usuario ya existe");
+            }
+            identities.updateUsername("client", targetId, username);
+            user.setUsername(username);
+        }
+
+        return UserResponse.fromSelf(userRepository.save(user));
     }
 
     @Transactional
@@ -74,8 +86,21 @@ public class UserService {
         }
         User user = userRepository.findByIdForUpdate(targetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        user.setAvatarUrl(avatarUrl);
-        return UserResponse.from(userRepository.save(user));
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecciona una imagen válida.");
+        }
+        if (!avatarUrl.equals(user.getAvatarUrl())) {
+            requireOwnedAvatar(targetId, avatarUrl);
+            user.setAvatarUrl(avatarUrl);
+        }
+        return UserResponse.fromSelf(userRepository.save(user));
+    }
+
+    private void requireOwnedAvatar(String userId, String avatarUrl) {
+        if (!assetRegistry.attachIfOwned("client", userId, avatarUrl, "profile", userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "La imagen no pertenece a tu cuenta o ya está asociada a otro recurso.");
+        }
     }
 
     @Transactional
@@ -95,19 +120,16 @@ public class UserService {
         user.setIsActive(activating);
         User saved = userRepository.save(user);
         if (!activating) {
-            clientSessionRepository.findAll().stream()
-                .filter(s -> saved.getId().equals(s.getUserId()) && s.getIsActive())
-                .forEach(s -> {
-                    s.setIsActive(false);
-                    clientSessionRepository.save(s);
-                });
+            clientSessionRepository.revokeActiveByUserId(saved.getId());
         }
-        return UserResponse.from(saved);
+        return UserResponse.fromPublic(saved, null);
     }
 
     @Transactional
     public void deleteUser(String targetId) {
+        clientSessionRepository.revokeActiveByUserId(targetId);
         userRepository.deleteById(targetId);
+        identities.delete("client", targetId);
     }
 
     @Transactional
@@ -116,7 +138,9 @@ public class UserService {
         User follower = userRepository.findById(followerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Seguidor no encontrado"));
         User following = userRepository.findById(followingId)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario a seguir no encontrado"));
+        requireFoodie(follower);
 
         if (follower.getFollowing() == null) {
             follower.setFollowing(new HashSet<>());
@@ -143,12 +167,20 @@ public class UserService {
         }
     }
 
+    private static void requireFoodie(User user) {
+        if (user.getRole() != User.Role.foodie) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Esta operación está disponible para cuentas Foodie.");
+        }
+    }
+
     @Transactional
     public void unfollow(String followerId, String followingId) {
         if (followerId == null || followingId == null) return;
         User follower = userRepository.findById(followerId).orElse(null);
         User following = userRepository.findById(followingId).orElse(null);
         if (follower != null && following != null && follower.getFollowing() != null) {
+            requireFoodie(follower);
             follower.getFollowing().remove(following);
             userRepository.save(follower);
         }

@@ -3,13 +3,16 @@ package co.edu.umb.foodies.backend.service;
 import co.edu.umb.foodies.backend.dto.request.LoginRequest;
 import co.edu.umb.foodies.backend.dto.request.RegisterRequest;
 import co.edu.umb.foodies.backend.dto.response.AuthResponse;
-import co.edu.umb.foodies.backend.model.AuthSession;
-import co.edu.umb.foodies.backend.model.PasswordResetToken;
+import co.edu.umb.foodies.backend.dto.response.RegistrationResponse;
+import co.edu.umb.foodies.backend.model.ClientSession;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeRepository;
+import co.edu.umb.foodies.backend.repository.EmployeeSessionRepository;
 import co.edu.umb.foodies.backend.repository.PasswordResetTokenRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,17 +21,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.time.LocalDateTime;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -46,13 +44,15 @@ class AuthServiceSessionTest {
     private static final String EMAIL = "sesiones@example.test";
     private static final String PASSWORD = "contraseña-de-prueba";
     private static final String ENCODED_PASSWORD = "hash-de-prueba";
-    private static final String RESET_CODE = "123456";
 
     @Mock private UserRepository users;
-    @Mock private AuthSessionRepository sessions;
+    @Mock private EmployeeRepository employees;
+    @Mock private ClientSessionRepository clientSessions;
+    @Mock private EmployeeSessionRepository employeeSessions;
     @Mock private PasswordResetTokenRepository resetTokens;
+    @Mock private AccountIdentityRegistry identities;
     @Mock private PasswordEncoder passwordEncoder;
-    @Mock private JavaMailSender mailSender;
+    @Mock private EmailVerificationService challenges;
 
     private User user;
     private JwtUtil jwtUtil;
@@ -63,7 +63,8 @@ class AuthServiceSessionTest {
         byte[] key = new byte[32];
         new SecureRandom().nextBytes(key);
         jwtUtil = new JwtUtil(Base64.getEncoder().encodeToString(key), EXPIRATION_MS);
-        service = new AuthService(users, sessions, resetTokens, passwordEncoder, jwtUtil, mailSender);
+        service = new AuthService(users, employees, clientSessions, employeeSessions,
+                resetTokens, identities, passwordEncoder, jwtUtil, challenges);
         user = User.builder()
                 .id(UUID.randomUUID().toString())
                 .email(EMAIL)
@@ -72,6 +73,7 @@ class AuthServiceSessionTest {
                 .role(User.Role.foodie)
                 .password(ENCODED_PASSWORD)
                 .isActive(true)
+                .emailVerified(true)
                 .build();
     }
 
@@ -83,102 +85,141 @@ class AuthServiceSessionTest {
 
         AuthResponse response = service.login(loginRequest(), request);
 
-        ArgumentCaptor<AuthSession> saved = ArgumentCaptor.forClass(AuthSession.class);
-        verify(sessions).saveAndFlush(saved.capture());
-        AuthSession session = saved.getValue();
+        ArgumentCaptor<ClientSession> saved = ArgumentCaptor.forClass(ClientSession.class);
+        verify(clientSessions).saveAndFlush(saved.capture());
+        ClientSession session = saved.getValue();
         String jwt = response.getToken();
         var claims = jwtUtil.parse(jwt);
-        String sha256 = HexFormat.of().formatHex(
-                MessageDigest.getInstance("SHA-256").digest(jwt.getBytes(StandardCharsets.UTF_8)));
 
         assertThat(jwt.length()).isGreaterThan(191);
-        assertThat(session.getSessionToken()).isEqualTo("v1:" + sha256);
+        assertThat(session.getSessionToken()).isEqualTo(jwtUtil.sessionTokenKey(jwt));
         assertThat(session.getUserId()).isEqualTo(user.getId());
         assertThat(session.getIsActive()).isTrue();
+        assertThat(session.getPlatform()).isEqualTo(ClientSession.Platform.mobile);
         assertThat(session.getExpiresAt()).isEqualTo(claims.getExpiration().toInstant());
         assertThat(response.getTokenType()).isEqualTo("Bearer");
         assertThat(response.getExpiresInMs()).isPositive().isLessThanOrEqualTo(EXPIRATION_MS);
         assertThat(response.getUser().getId()).isEqualTo(user.getId());
+        assertThat(response.getUser().getEmailVerified()).isTrue();
     }
 
     @Test
-    void loginPropagatesPersistenceFailure() {
+    void webPlatformIsRecordedAsDeclaredButDoesNotChangeAuthorizationRole() {
         allowLogin();
-        var error = new DataIntegrityViolationException("No se pudo persistir la sesión");
-        when(sessions.saveAndFlush(any(AuthSession.class))).thenThrow(error);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("X-Platform", "web");
+
+        service.login(loginRequest(), request);
+
+        ArgumentCaptor<ClientSession> saved = ArgumentCaptor.forClass(ClientSession.class);
+        verify(clientSessions).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getPlatform()).isEqualTo(ClientSession.Platform.web_restaurante);
+    }
+
+    @Test
+    void loginPropagatesPersistenceFailureWithoutReturningToken() {
+        allowLogin();
+        var error = new DataIntegrityViolationException("session insert failed");
+        when(clientSessions.saveAndFlush(any(ClientSession.class))).thenThrow(error);
 
         assertThatThrownBy(() -> service.login(loginRequest(), new MockHttpServletRequest()))
                 .isSameAs(error);
     }
 
     @Test
-    void registrationPropagatesPersistenceFailure() {
+    void unverifiedAccountCannotStartANormalSession() {
+        user.setEmailVerified(false);
+        allowLogin();
+
+        assertThatThrownBy(() -> service.login(loginRequest(), new MockHttpServletRequest()))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
+        verifyNoInteractions(clientSessions);
+    }
+
+    @Test
+    void registrationPersistsAnUnverifiedAccountWithoutIssuingASession() {
         RegisterRequest request = new RegisterRequest();
         request.setEmail(EMAIL);
         request.setUsername("sesiones");
         request.setPassword(PASSWORD);
+        request.setFullName("Usuario de prueba");
+        request.setRole("restaurant_admin");
 
+        when(users.existsByEmail(EMAIL)).thenReturn(false);
+        when(employees.existsByEmail(EMAIL)).thenReturn(false);
+        when(users.existsByUsername("sesiones")).thenReturn(false);
+        when(employees.existsByUsername("sesiones")).thenReturn(false);
         when(passwordEncoder.encode(PASSWORD)).thenReturn(ENCODED_PASSWORD);
-        when(users.save(any(User.class))).thenAnswer(invocation -> {
-            User registered = invocation.getArgument(0);
-            registered.prePersist();
-            return registered;
-        });
-        var error = new DataIntegrityViolationException("No se pudo persistir la sesión");
-        when(sessions.saveAndFlush(any(AuthSession.class))).thenThrow(error);
+        when(users.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(challenges.issue(any(), any(), any(), any(), any()))
+                .thenReturn(new EmailVerificationService.IssuedChallenge("challenge-id", 900_000));
 
-        assertThatThrownBy(() -> service.register(request, new MockHttpServletRequest()))
-                .isSameAs(error);
+        RegistrationResponse response = service.register(request, new MockHttpServletRequest());
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(users).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getRole()).isEqualTo(User.Role.foodie);
+        assertThat(saved.getValue().getEmailVerified()).isFalse();
+        assertThat(response.verificationRequired()).isTrue();
+        assertThat(response.challengeId()).isEqualTo("challenge-id");
+        assertThat(response.requestedRole()).isEqualTo("restaurant_admin");
+        verify(identities).register("client", saved.getValue().getId(), EMAIL, "sesiones", "restaurant_admin");
+        verifyNoInteractions(clientSessions, employeeSessions);
     }
 
     @Test
     void logoutRevokesSessionFoundByDigest() {
         String token = jwtUtil.issueToken(user.getId(), EMAIL, user.getRole().name()).token();
         String key = jwtUtil.sessionTokenKey(token);
-        AuthSession session = AuthSession.builder()
+        ClientSession session = ClientSession.builder()
                 .userId(user.getId())
                 .sessionToken(key)
                 .isActive(true)
                 .build();
-        when(sessions.findBySessionTokenAndIsActiveTrue(key)).thenReturn(Optional.of(session));
+        when(clientSessions.findBySessionTokenAndIsActiveTrue(key)).thenReturn(Optional.of(session));
 
         service.logout(token);
 
         assertThat(session.getIsActive()).isFalse();
-        verify(sessions).save(session);
+        verify(clientSessions).save(session);
     }
 
     @Test
-    void resettingPasswordRevokesAllSessionsForThatAccount() {
-        PasswordResetToken code = resetToken(LocalDateTime.now().plusMinutes(1));
-        when(resetTokens.findByEmailAndCode(EMAIL, RESET_CODE)).thenReturn(Optional.of(code));
-        when(users.findByEmailForUpdate(EMAIL)).thenReturn(Optional.of(user));
-        String newPassword = "nueva-contraseña-de-prueba";
-        String newHash = "nuevo-hash-de-prueba";
-        when(passwordEncoder.encode(newPassword)).thenReturn(newHash);
+    void resettingPasswordConsumesCodeAndRevokesOnlyThatAccountSessions() {
+        when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+        when(employees.findByEmail(EMAIL)).thenReturn(Optional.empty());
+        when(challenges.consumePasswordResetChallenge(
+                user.getId(), EMAIL, "123456", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client))
+                .thenReturn(true);
+        when(passwordEncoder.encode("new-password-test")).thenReturn("new-hash");
 
-        service.resetPassword(EMAIL, RESET_CODE, newPassword);
+        assertThat(service.resetPassword(EMAIL, "123456", "new-password-test")).isTrue();
 
         verify(users).save(user);
-        verify(resetTokens).delete(code);
-        verify(sessions).revokeAllByUserId(user.getId());
-        assertThat(user.getPassword()).isEqualTo(newHash);
+        verify(challenges).consumePasswordResetChallenge(
+                user.getId(), EMAIL, "123456", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client);
+        verify(clientSessions).revokeActiveByUserId(user.getId());
+        assertThat(user.getPassword()).isEqualTo("new-hash");
     }
 
     @Test
-    void expiredResetCodeDoesNotRevokeSessionsOrUpdateUser() {
-        PasswordResetToken code = resetToken(LocalDateTime.now().minusMinutes(1));
-        when(resetTokens.findByEmailAndCode(EMAIL, RESET_CODE)).thenReturn(Optional.of(code));
+    void invalidResetCodeDoesNotUpdatePasswordOrRevokeSessions() {
+        when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+        when(employees.findByEmail(EMAIL)).thenReturn(Optional.empty());
+        when(challenges.consumePasswordResetChallenge(
+                user.getId(), EMAIL, "000000", co.edu.umb.foodies.backend.model.PasswordResetToken.IdentityType.client))
+                .thenReturn(false);
 
-        assertThatThrownBy(() -> service.resetPassword(EMAIL, RESET_CODE, PASSWORD))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThat(service.resetPassword(EMAIL, "000000", "new-password-test")).isFalse();
 
-        verifyNoInteractions(sessions, users, passwordEncoder);
+        verify(users, org.mockito.Mockito.never()).save(any(User.class));
+        verifyNoInteractions(clientSessions);
     }
 
     private void allowLogin() {
-        when(users.findByEmailForUpdate(EMAIL)).thenReturn(Optional.of(user));
+        when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+        when(employees.findByEmail(EMAIL)).thenReturn(Optional.empty());
         when(passwordEncoder.matches(PASSWORD, ENCODED_PASSWORD)).thenReturn(true);
     }
 
@@ -187,13 +228,5 @@ class AuthServiceSessionTest {
         request.setEmail(EMAIL);
         request.setPassword(PASSWORD);
         return request;
-    }
-
-    private PasswordResetToken resetToken(LocalDateTime expiresAt) {
-        return PasswordResetToken.builder()
-                .email(EMAIL)
-                .code(RESET_CODE)
-                .expiresAt(expiresAt)
-                .build();
     }
 }

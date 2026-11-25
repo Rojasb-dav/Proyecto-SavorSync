@@ -187,10 +187,7 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
     try {
       String? finalImageUrl = _imageUrl;
       if (_pickedImage != null) {
-        final uploaded = await CloudinaryService.uploadImageXFile(_pickedImage!);
-        if (uploaded != null) {
-          finalImageUrl = uploaded;
-        }
+        finalImageUrl = await CloudinaryService.uploadImageXFile(_pickedImage!);
       }
 
       if (_latitude == null || _longitude == null) {
@@ -203,9 +200,9 @@ class _RestaurantAdminDashboardState extends State<RestaurantAdminDashboard> {
         'category': _categoryCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
-        'imageUrl': finalImageUrl ?? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80',
-        'latitude': _latitude ?? 4.6669,
-        'longitude': _longitude ?? -74.0545,
+        'imageUrl': finalImageUrl,
+        'latitude': _latitude,
+        'longitude': _longitude,
       };
 
       await _apiService.createRestaurant(data);

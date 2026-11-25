@@ -17,12 +17,18 @@ class AuthProvider extends ChangeNotifier {
   bool _loading = false;
   bool _disposed = false;
   String? _sessionNotice;
+  RegistrationChallenge? _pendingVerification;
+  String? _pendingVerificationEmail;
+  String? _pendingRequestedRole;
 
   AuthStatus get status => _status;
   UserModel? get user => _user;
   String? get error => _error;
   bool get loading => _loading;
   String? get sessionNotice => _sessionNotice;
+  RegistrationChallenge? get pendingVerification => _pendingVerification;
+  String? get pendingVerificationEmail => _pendingVerificationEmail;
+  String? get pendingRequestedRole => _pendingRequestedRole;
 
   Future<void> bootstrap() async {
     if (_loading) return;
@@ -30,6 +36,25 @@ class AuthProvider extends ChangeNotifier {
     _setLoading(true);
     try {
       _user = await _authService.restoreSession();
+      if (_user == null) {
+        final pending = await _authService.restorePendingVerification();
+        if (pending != null) {
+          final requestedRole = pending['requestedRole'] as String?;
+          _pendingVerification = RegistrationChallenge(
+            challengeId: pending['challengeId'] as String,
+            expiresInMs: pending['expiresInMs'] as int,
+            requestedRole: requestedRole == null || requestedRole.isEmpty
+                ? null
+                : requestedRole,
+          );
+          _pendingVerificationEmail = pending['email'] as String;
+          _pendingRequestedRole = requestedRole?.isNotEmpty == true
+              ? requestedRole
+              : 'foodie';
+        }
+      } else {
+        await _authService.clearPendingVerification();
+      }
       _status = _user == null
           ? AuthStatus.unauthenticated
           : AuthStatus.authenticated;
@@ -50,9 +75,11 @@ class AuthProvider extends ChangeNotifier {
       _status = AuthStatus.authenticated;
       _sessionNotice = null;
       _error = null;
+      await _authService.clearPendingVerification();
+      _clearPendingVerification();
       return true;
-    } catch (e) {
-      _error = e.toString().replaceAll('Exception: ', '');
+    } catch (error) {
+      _error = _message(error);
       return false;
     } finally {
       _setLoading(false);
@@ -69,8 +96,8 @@ class AuthProvider extends ChangeNotifier {
       _sessionNotice = null;
       _error = null;
       return true;
-    } catch (e) {
-      _error = e.toString().replaceAll('Exception: ', '');
+    } catch (error) {
+      _error = _message(error);
       return false;
     } finally {
       _setLoading(false);
@@ -82,23 +109,106 @@ class AuthProvider extends ChangeNotifier {
     required String username,
     required String password,
     String? fullName,
+    String requestedRole = 'foodie',
   }) async {
     if (_loading) return false;
     _setLoading(true);
     try {
-      final result = await _authService.register(
+      final challenge = await _authService.register(
         email: email,
         username: username,
         password: password,
         fullName: fullName,
+        requestedRole: requestedRole,
+      );
+      _user = null;
+      _status = AuthStatus.unauthenticated;
+      _pendingVerification = challenge;
+      _pendingVerificationEmail = email.trim();
+      _pendingRequestedRole = requestedRole;
+      _error = null;
+      _sessionNotice = null;
+      return true;
+    } catch (error) {
+      _error = _message(error);
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> resendPendingVerification() async {
+    final email = _pendingVerificationEmail;
+    final challenge = _pendingVerification;
+    if (_loading || email == null || challenge == null) return false;
+    _setLoading(true);
+    try {
+      final replacement = await _authService.resendVerificationCode(
+        email: email,
+        challengeId: challenge.challengeId,
+      );
+      if (replacement == null) {
+        throw Exception('No fue posible renovar el desafío. Intenta registrarte nuevamente.');
+      }
+      _pendingVerification = replacement;
+      _error = null;
+      return true;
+    } catch (error) {
+      _error = _message(error);
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> beginEmailVerification(String email, String password) async {
+    if (_loading) return false;
+    _setLoading(true);
+    try {
+      final challenge = await _authService.resendVerificationCode(
+        email: email,
+        password: password,
+      );
+      if (challenge == null) {
+        throw Exception('No hay un desafío de verificación activo para esta cuenta.');
+      }
+      _pendingVerification = challenge;
+      _pendingVerificationEmail = email.trim();
+      _pendingRequestedRole = challenge.requestedRole ?? 'foodie';
+      _error = null;
+      return true;
+    } catch (error) {
+      _error = _message(error);
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> abandonPendingVerification() async {
+    await _authService.clearPendingVerification();
+    _clearPendingVerification();
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<bool> verifyPendingEmail(String code) async {
+    final challenge = _pendingVerification;
+    if (_loading || challenge == null) return false;
+    _setLoading(true);
+    try {
+      final result = await _authService.verifyEmail(
+        challengeId: challenge.challengeId,
+        code: code,
       );
       _user = result.user;
       _status = AuthStatus.authenticated;
-      _sessionNotice = null;
       _error = null;
+      _sessionNotice = null;
+      await _authService.clearPendingVerification();
+      _clearPendingVerification();
       return true;
-    } catch (e) {
-      _error = e.toString().replaceAll('Exception: ', '');
+    } catch (error) {
+      _error = _message(error);
       return false;
     } finally {
       _setLoading(false);
@@ -135,15 +245,24 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  String _message(Object error) =>
+      error.toString().replaceFirst('Exception: ', '');
+
+  void _clearPendingVerification() {
+    _pendingVerification = null;
+    _pendingVerificationEmail = null;
+    _pendingRequestedRole = null;
+  }
+
   @override
   void dispose() {
     _disposed = true;
     super.dispose();
   }
 
-  void _setLoading(bool v) {
+  void _setLoading(bool value) {
     if (_disposed) return;
-    _loading = v;
+    _loading = value;
     notifyListeners();
   }
 }

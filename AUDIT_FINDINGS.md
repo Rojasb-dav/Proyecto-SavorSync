@@ -108,3 +108,31 @@ El cierre revoca la sesión corriente. La suspensión y el cambio de contraseña
 
 **PARCIALMENTE CORREGIDA.** Spring comprueba roles y titularidad en las rutas sensibles. PQRS queda fuera de las rutas públicas, las consultas de notificaciones y reservas personales se acotan al titular y la administración de menús y reservas se acota al propietario. Las escrituras sociales obtienen su autor de la sesión. Las pruebas HTTP y MySQL confirmaron los controles cubiertos. La compatibilidad funcional en dispositivos y el cotejo del alcance de moderación siguen pendientes. [TEST_REPORT.md](TEST_REPORT.md).
 
+## Reconciliación con la iteración V3.1 — 2026-11-25
+
+Los hallazgos FALLO-01–55 anteriores describen una auditoría V2 y se conservan sin reescribir. El árbol actual parte de `39399448b6c9a0e93157d52870b763483b0a86ab` en `fix/savorsync-remediation-v3`; los estados históricos no son evidencia de esta iteración.
+
+| Discrepancia documental | Estado observado en código V3.1 |
+|---|---|
+| Este informe declara rama `main` y base `8a9101e…`; el informe de pruebas declara otra base y 48 errores. | Son antecedentes V2. La rama/HEAD actuales están indicados arriba; la ejecución actual figura en TEST_REPORT.md. |
+| El informe histórico indica que P0.4–P0.8 no se implementaron. | En V3.1 hay cambios locales en identidad, OTP, recuperación, Flyway, CORS, archivos y Flutter. El grado de verificación individual está en REMEDIATION_PLAN.md y P0_AUDIT_HANDOFF.md. |
+| El inventario anterior dice que no hay Flyway y que sólo hay un SQL destructivo. | Ahora hay Flyway y V1–V5. V1 conserva 22 tablas y triggers sin DROP/CREATE DATABASE. Las migraciones no se ejecutaron porque no hay MySQL/Docker local. |
+| El contrato previo dice registro 200 con AuthResponse, CORS con patrones amplios y upload unsigned. | El código actual registra con 202 sin JWT, usa orígenes CORS explícitos y procesa cargas en Spring con credenciales sólo del servidor. Véase API_CONTRACTS.md. |
+| El reporte V2 afirmaba que el esquema y MySQL quedaron completamente verificados. | En esta ejecución no se abrió MySQL local ni Aiven; esa afirmación no se puede trasladar a V3.1. |
+
+El repositorio no define los identificadores `V3-01`–`V3-07` en documentos ni código. Se registran sin asignarles causas inventadas; la correspondencia con el informe externo de auditoría queda pendiente. No se constató regresión de producción ni se ejecutó sobre un servicio remoto.
+
+## Hallazgos residuales de auditoría V3.2 — 2026-11-25
+
+| Hallazgo | Resultado de revisión local |
+|---|---|
+| V3.2-01 Propiedad de imágenes | Corregido: PostService y UserService comprueban el resultado de attachIfOwned; asociación idempotente sólo para el mismo recurso/dueño; una asociación fallida revierte persistencia. Se probaron URL ajena, arbitraria, reuso y rollback. Imágenes históricas no se borran. |
+| V3.2-02 Tipo solicitado | Corregido y probado: reenvío lee requested_role desde el registro de identidad. Flutter conserva email, challenge y tipo solicitado pendiente de verificación entre reaperturas; ese dato no asigna permisos. Aprobación revoca sesiones antiguas. |
+| V3.2-03 Empleados existentes | Corregido y probado con moderador y admin_sistema sintéticos: ambos pueden solicitar OTP y verificarse individualmente. No hay verificación masiva ni cuentas privilegiadas de fallback. La transición real de cuentas depende de un operador propietario autorizado. |
+| V3.2-04 Autorización exhaustiva | SecurityConfig usa reglas por método/rol y denyAll final; controladores/servicios revisados comprueban titular/restaurante y estado. Pruebas seleccionadas y matriz creada. Revisión combinatoria no ejecutada y módulos P1 no implementados. |
+| V3.2-05 MySQL/Flyway | Corregido localmente: cinco migraciones, historial y checksums válidos desde base nueva; JPA validate; baseline de esquema legado preserva fixtures; colisión normalizada falla sin borrar filas. No Aiven. |
+| V3.2-06 SessionMySqlTest | Contrato actualizado: 202 y RegistrationResponse sin JWT, código de seis dígitos capturado de correo simulado, AuthResponse tras OTP, sesión/revocación y flujo de aprobación. Sin correo real. |
+
+Los errores iniciales de pruebas ocasionados por URL de fixtures, contador persistente entre corridas y checksum previo se corrigieron en el arnés local; no se deshabilitaron casos ni se alteraron pruebas para ocultar fallos. Los resultados finales y conteos se anotan en el handoff V3.2 tras inspeccionar XML JUnit.
+
+La corrida final aprobó 65 pruebas Java, incluidas 10 de sesión contra MySQL. Se corrigió un interbloqueo de recuperación detectado por las pruebas concurrentes. Véase [P0_V32_AUDIT_HANDOFF.md](P0_V32_AUDIT_HANDOFF.md).

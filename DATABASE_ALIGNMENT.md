@@ -1,5 +1,7 @@
 # Alineación entre Java y MySQL
 
+> **Actualización V3.2.** MySQL 8.0 local validó la instalación desde cero y el baseline legado. Se conservaron las 22 tablas originales. Hibernate arrancó con `ddl-auto=validate` tras alinear `CHAR(36)`, `ENUM`, `TINYINT` y longitud de comentarios con el DDL. Los resultados y el tratamiento de colisiones y de V5 se documentan en [MYSQL_MIGRATION_VALIDATION.md](MYSQL_MIGRATION_VALIDATION.md). El resto de este archivo conserva los antecedentes.
+
 **P0.5 · PENDIENTE.** Revisión estática del esquema y del código local sobre la base `8a9101e2b627e609f359f92189c1cf11f85810c8`, con los cambios locales visibles en Android Studio. Se conservaron las tablas, relaciones y registros. La validación con MySQL y el cotejo con Aiven están pendientes.
 
 ## Estado del esquema
@@ -71,3 +73,17 @@ Las sesiones nuevas conservan `sesiones_cliente.session_token` de 191 caracteres
 5. Validar Hibernate contra MySQL tras aplicar las migraciones de prueba. Ejecutar operaciones de cada repositorio y verificar los contratos consumidos en Flutter Web y Android.
 
 **Impacto registrado.** Las discrepancias afectan sesiones, recuperación, publicaciones, menús, reservas y áreas administrativas de ambos clientes por igual a través del backend compartido. Los cambios de plataforma y los ajustes de los DTO necesitan coordinarse con las tareas correspondientes. Este documento refleja revisión estática. No se conectó a Aiven, ni se ejecutó el script, ni se realizó una migración. No hay commit asociado.
+
+## Estado V3.1 de migraciones — 2026-11-25
+
+| Versión | Contenido | Seguridad de ejecución |
+|---|---|---|
+| V1 | DDL original: 22 tablas y triggers UUID; sin DROP DATABASE, DROP TABLE, CREATE DATABASE ni USE. | Sólo para una base vacía. |
+| V2 | Tabla tokens_recuperacion preexistente, sin edición retroactiva. | Si ya se aplicó, conserva su checksum original. |
+| V3 | Metadatos de propósito/intentos/consumo, email_verified de empleados, límites durables y registry normalizado de identidad. | Aditiva; colisiones de email/username normalizados interrumpen migración. |
+| V4 | Tracking de cargas Cloudinary y referencias pendientes. | Aditiva; no borra objetos ni imágenes existentes. |
+| V5 | Conserva requested_role separado del rol efectivo y backfill de administradores actuales. | Aditiva. |
+
+Flyway se incorpora con `flyway-core` y `flyway-mysql`. Se deshabilita por defecto en la configuración común; `baseline-on-migrate` es falso. Development y test permiten activarlo por perfil; el entorno local controla `APP_FLYWAY_ENABLED`. Hibernate usa `ddl-auto=validate`, no create/create-drop.
+
+Para una base nueva, crear una base vacía de pruebas y ejecutar todas las versiones desde V1. Para una base existente: obtener respaldo verificable, inspeccionar motor/tablas/columnas/índices/FK/triggers, comparar contra V1–V5, resolver colisiones de email/username y aprobar manualmente un baseline en la versión del esquema realmente comprobada. No se ejecutó este procedimiento: MySQL y Docker no están disponibles. No se conectó a Aiven ni se aplicó SQL remoto; compatibilidad JPA permanece sin verificar.

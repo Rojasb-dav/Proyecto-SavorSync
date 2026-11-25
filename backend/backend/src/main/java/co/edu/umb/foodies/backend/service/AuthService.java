@@ -1,8 +1,10 @@
 package co.edu.umb.foodies.backend.service;
 
+import co.edu.umb.foodies.backend.dto.request.EmailVerificationRequest;
 import co.edu.umb.foodies.backend.dto.request.LoginRequest;
 import co.edu.umb.foodies.backend.dto.request.RegisterRequest;
 import co.edu.umb.foodies.backend.dto.response.AuthResponse;
+import co.edu.umb.foodies.backend.dto.response.RegistrationResponse;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
 import co.edu.umb.foodies.backend.model.ClientSession;
 import co.edu.umb.foodies.backend.model.Employee;
@@ -15,308 +17,410 @@ import co.edu.umb.foodies.backend.repository.EmployeeSessionRepository;
 import co.edu.umb.foodies.backend.repository.PasswordResetTokenRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
-import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final int BCRYPT_MAX_BYTES = 72;
 
     private final UserRepository userRepository;
     private final EmployeeRepository employeeRepository;
     private final ClientSessionRepository clientSessionRepository;
     private final EmployeeSessionRepository employeeSessionRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final AccountIdentityRegistry identities;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final JavaMailSender mailSender;
-
-    @org.springframework.beans.factory.annotation.Value("${spring.mail.username}")
-    private String senderEmail;
+    private final EmailVerificationService challenges;
 
     @Transactional
-    public AuthResponse register(RegisterRequest req, HttpServletRequest httpReq) {
-        if (userRepository.existsByEmail(req.getEmail().trim()) || employeeRepository.existsByEmail(req.getEmail().trim())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El correo ya está registrado");
+    public RegistrationResponse register(RegisterRequest req, HttpServletRequest httpReq) {
+        String email = normalizeEmail(req.getEmail());
+        String username = normalizeUsername(req.getUsername());
+        validatePassword(req.getPassword());
+        String requestedRole = normalizeRequestedRole(req.getRole());
+
+        if (userRepository.existsByEmail(email) || employeeRepository.existsByEmail(email)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya está registrado.");
         }
-        if (userRepository.existsByUsername(req.getUsername().trim()) || employeeRepository.existsByUsername(req.getUsername().trim())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
+        if (userRepository.existsByUsername(username) || employeeRepository.existsByUsername(username)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El nombre de usuario ya existe.");
         }
 
-        User.Role role = User.Role.foodie;
-
+        // A restaurant account remains a Foodie until the verified request is approved.
+        String userId = UUID.randomUUID().toString();
+        identities.register("client", userId, email, username, requestedRole);
         User user = User.builder()
-                .id(UUID.randomUUID().toString())
-                .email(req.getEmail().trim())
-                .username(req.getUsername().trim())
-                .password(passwordEncoder.encode(req.getPassword().trim()))
-                .fullName(req.getFullName() != null ? req.getFullName().trim() : req.getUsername().trim())
-                .role(role)
+                .id(userId)
+                .email(email)
+                .username(username)
+                .password(passwordEncoder.encode(req.getPassword()))
+                .fullName(req.getFullName().trim())
+                .role(User.Role.foodie)
                 .isActive(true)
                 .emailVerified(false)
                 .build();
+        user = userRepository.saveAndFlush(user);
 
-        user = userRepository.save(user);
+        EmailVerificationService.IssuedChallenge challenge = challenges.issue(
+                user.getId(), email, PasswordResetToken.IdentityType.client,
+                PasswordResetToken.Purpose.EMAIL_VERIFICATION, sourceAddress(httpReq));
+        return new RegistrationResponse(true, challenge.challengeId(),
+                challenge.expiresInMs(), requestedRole);
+    }
 
-        return buildAuthResponse(user, httpReq);
+    @Transactional
+    public AuthResponse login(LoginRequest req, HttpServletRequest httpReq) {
+        String email = normalizeEmail(req.getEmail());
+        User user = userRepository.findByEmail(email).orElse(null);
+        Employee employee = employeeRepository.findByEmail(email).orElse(null);
+
+        if (user != null && employee != null) {
+            throw invalidCredentials();
+        }
+        if (user != null) {
+            if (!Boolean.TRUE.equals(user.getIsActive())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva.");
+            }
+            if (!passwordEncoder.matches(req.getPassword(), user.getPassword())) {
+                throw invalidCredentials();
+            }
+            if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "EMAIL_VERIFICATION_REQUIRED: verifica tu correo antes de iniciar sesión.");
+            }
+            return createClientSession(user, httpReq);
+        }
+
+        if (employee != null) {
+            if (!Boolean.TRUE.equals(employee.getIsActive())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva.");
+            }
+            if (!passwordEncoder.matches(req.getPassword(), employee.getPassword())) {
+                throw invalidCredentials();
+            }
+            if (!Boolean.TRUE.equals(employee.getEmailVerified())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "EMAIL_VERIFICATION_REQUIRED: verifica tu correo antes de iniciar sesión.");
+            }
+            return createEmployeeSession(employee, httpReq);
+        }
+        throw invalidCredentials();
+    }
+
+    @Transactional
+    public AuthResponse verifyEmail(String challengeId, String code, HttpServletRequest httpReq) {
+        var verified = challenges.verify(challengeId, code,
+                PasswordResetToken.Purpose.EMAIL_VERIFICATION);
+        if (verified.isEmpty()) return null;
+
+        PasswordResetToken challenge = verified.get();
+        if (challenge.getIdentityType() == PasswordResetToken.IdentityType.client) {
+            User user = userRepository.findById(challenge.getIdentityId()).orElse(null);
+            if (user == null || !Boolean.TRUE.equals(user.getIsActive())
+                    || !normalizeEmail(user.getEmail()).equals(challenge.getEmail())) return null;
+            user.setEmailVerified(true);
+            userRepository.saveAndFlush(user);
+            return createClientSession(user, httpReq);
+        }
+
+        Employee employee = employeeRepository.findById(challenge.getIdentityId()).orElse(null);
+        if (employee == null || !Boolean.TRUE.equals(employee.getIsActive())
+                || !normalizeEmail(employee.getEmail()).equals(challenge.getEmail())) return null;
+        employee.setEmailVerified(true);
+        employeeRepository.saveAndFlush(employee);
+        return createEmployeeSession(employee, httpReq);
+    }
+
+    @Transactional
+    public RegistrationResponse requestEmailVerification(
+            EmailVerificationRequest request, HttpServletRequest httpReq) {
+        String email = normalizeEmail(request.email());
+        var previous = request.challengeId() == null ? null
+                : passwordResetTokenRepository.findById(request.challengeId())
+                        .filter(token -> token.getPurpose() == PasswordResetToken.Purpose.EMAIL_VERIFICATION)
+                        .orElse(null);
+        if (email.isBlank() && previous != null) email = previous.getEmail();
+
+        RegistrationResponse generic = new RegistrationResponse(true, null, 0, null);
+        if (email.isBlank()) return generic;
+
+        String source = sourceAddress(httpReq);
+        if (!challenges.checkRequestLimit(email, source)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Demasiadas solicitudes. Espera antes de intentar nuevamente.");
+        }
+
+        User user = userRepository.findByEmail(email).orElse(null);
+        Employee employee = employeeRepository.findByEmail(email).orElse(null);
+        if (user != null && employee == null && !Boolean.TRUE.equals(user.getEmailVerified())
+                && Boolean.TRUE.equals(user.getIsActive())
+                && canResumeVerification(request, previous, email, user.getId(),
+                        PasswordResetToken.IdentityType.client, user.getPassword())) {
+            var issued = challenges.issue(user.getId(), email, PasswordResetToken.IdentityType.client,
+                    PasswordResetToken.Purpose.EMAIL_VERIFICATION, source, true);
+            String requestedRole = identities.requestedRole("client", user.getId());
+            return new RegistrationResponse(true, issued.challengeId(), issued.expiresInMs(),
+                    requestedRole == null ? "foodie" : requestedRole);
+        }
+        if (employee != null && user == null && !Boolean.TRUE.equals(employee.getEmailVerified())
+                && Boolean.TRUE.equals(employee.getIsActive())
+                && canResumeVerification(request, previous, email, employee.getId(),
+                        PasswordResetToken.IdentityType.employee, employee.getPassword())) {
+            var issued = challenges.issue(employee.getId(), email, PasswordResetToken.IdentityType.employee,
+                    PasswordResetToken.Purpose.EMAIL_VERIFICATION, source, true);
+            return new RegistrationResponse(true, issued.challengeId(), issued.expiresInMs(), "employee");
+        }
+        return generic;
+    }
+
+    private boolean canResumeVerification(EmailVerificationRequest request, PasswordResetToken previous,
+                                          String email, String identityId,
+                                          PasswordResetToken.IdentityType identityType, String passwordHash) {
+        if (request.password() != null) {
+            if (request.password().getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES
+                    || !passwordEncoder.matches(request.password(), passwordHash)) {
+                return false;
+            }
+            identities.lockForChallenge(identityType.name(), identityId);
+            return true;
+        }
+        if (previous == null || previous.getConsumedAt() != null
+                || !email.equals(previous.getEmail()) || !identityId.equals(previous.getIdentityId())
+                || identityType != previous.getIdentityType()) {
+            return false;
+        }
+        identities.lockForChallenge(identityType.name(), identityId);
+        return passwordResetTokenRepository.consumeForResend(previous.getId()) == 1;
     }
 
     @Transactional
     public UserResponse currentUser(String userId) {
         User user = userRepository.findById(userId).orElse(null);
         if (user != null) {
-            if (!Boolean.TRUE.equals(user.getIsActive())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
-            return UserResponse.from(user);
+            if (!Boolean.TRUE.equals(user.getIsActive()) || !Boolean.TRUE.equals(user.getEmailVerified())) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida.");
+            }
+            return UserResponse.fromSelf(user);
         }
         Employee employee = employeeRepository.findById(userId).orElse(null);
         if (employee != null) {
-            if (!Boolean.TRUE.equals(employee.getIsActive())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
-            return UserResponse.from(employee);
+            if (!Boolean.TRUE.equals(employee.getIsActive()) || !Boolean.TRUE.equals(employee.getEmailVerified())) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida.");
+            }
+            return UserResponse.fromSelf(employee);
         }
-        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida");
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sesión inválida.");
     }
 
     @Transactional
-    public UserResponse createModerator(RegisterRequest req) {
-        if (userRepository.existsByEmail(req.getEmail().trim()) || employeeRepository.existsByEmail(req.getEmail().trim())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El correo ya está registrado");
-        }
-        if (userRepository.existsByUsername(req.getUsername().trim()) || employeeRepository.existsByUsername(req.getUsername().trim())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El nombre de usuario ya existe");
+    public UserResponse createModerator(RegisterRequest req, HttpServletRequest httpReq) {
+        String email = normalizeEmail(req.getEmail());
+        String username = normalizeUsername(req.getUsername());
+        validatePassword(req.getPassword());
+        if (userRepository.existsByEmail(email) || employeeRepository.existsByEmail(email)
+                || userRepository.existsByUsername(username) || employeeRepository.existsByUsername(username)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El correo o nombre de usuario ya está registrado.");
         }
 
+        String employeeId = UUID.randomUUID().toString();
+        identities.register("employee", employeeId, email, username);
         Employee employee = Employee.builder()
-                .id(UUID.randomUUID().toString())
-                .email(req.getEmail().trim())
-                .username(req.getUsername().trim())
-                .password(passwordEncoder.encode(req.getPassword().trim()))
-                .fullName(req.getFullName() != null ? req.getFullName().trim() : req.getUsername().trim())
+                .id(employeeId)
+                .email(email)
+                .username(username)
+                .password(passwordEncoder.encode(req.getPassword()))
+                .fullName(req.getFullName().trim())
                 .role(Employee.Role.moderador)
                 .isActive(true)
+                .emailVerified(false)
                 .build();
-
-        employee = employeeRepository.save(employee);
-        return UserResponse.from(employee);
-    }
-
-    @Transactional
-    public AuthResponse login(LoginRequest req, HttpServletRequest httpReq) {
-        User user = userRepository.findByEmail(req.getEmail().trim()).orElse(null);
-        if (user != null) {
-            if (!Boolean.TRUE.equals(user.getIsActive())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva");
-            }
-            if (!passwordEncoder.matches(req.getPassword().trim(), user.getPassword())) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
-            }
-
-            return buildAuthResponse(user, httpReq);
-        }
-
-        Employee employee = employeeRepository.findByEmail(req.getEmail().trim()).orElse(null);
-        if (employee != null) {
-            if (!Boolean.TRUE.equals(employee.getIsActive())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cuenta inactiva");
-            }
-            if (!passwordEncoder.matches(req.getPassword().trim(), employee.getPassword())) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
-            }
-
-            String platformHeader = httpReq != null ? httpReq.getHeader("X-Platform") : null;
-            if ("mobile".equalsIgnoreCase(platformHeader)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Acceso denegado: Los perfiles de Administrador y Moderador sólo tienen acceso permitido desde la plataforma Web en computador.");
-            }
-
-            return buildEmployeeAuthResponse(employee, httpReq);
-        }
-
-        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas");
+        employee = employeeRepository.saveAndFlush(employee);
+        challenges.issue(employee.getId(), email, PasswordResetToken.IdentityType.employee,
+                PasswordResetToken.Purpose.EMAIL_VERIFICATION, sourceAddress(httpReq));
+        return UserResponse.fromSelf(employee);
     }
 
     @Transactional
     public void logout(String token) {
         if (token == null || token.isBlank()) return;
-        String clean = jwtUtil.sessionTokenKey(token);
-        clientSessionRepository.findBySessionTokenAndIsActiveTrue(clean).ifPresent(s -> {
-            s.setIsActive(false);
-            clientSessionRepository.save(s);
-        });
-        employeeSessionRepository.findBySessionTokenAndIsActiveTrue(clean).ifPresent(s -> {
-            s.setIsActive(false);
-            employeeSessionRepository.save(s);
-        });
+        String accountType = jwtUtil.parse(token).get("accountType", String.class);
+        String fingerprint = jwtUtil.sessionTokenKey(token);
+        if ("client".equals(accountType)) {
+            clientSessionRepository.findBySessionTokenAndIsActiveTrue(fingerprint).ifPresent(session -> {
+                session.setIsActive(false);
+                clientSessionRepository.save(session);
+            });
+        } else if ("employee".equals(accountType)) {
+            employeeSessionRepository.findBySessionTokenAndIsActiveTrue(fingerprint).ifPresent(session -> {
+                session.setIsActive(false);
+                employeeSessionRepository.save(session);
+            });
+        }
     }
 
     @Transactional
-    public void forgotPassword(String email) {
-        userRepository.findByEmail(email.trim().toLowerCase()).ifPresent(user -> {
-            String code = String.format("%06d", new SecureRandom().nextInt(900000) + 100000);
-            
-            try {
-                passwordResetTokenRepository.deleteByEmail(user.getEmail());
-                passwordResetTokenRepository.flush();
-
-                PasswordResetToken resetToken = PasswordResetToken.builder()
-                        .id(UUID.randomUUID().toString())
-                        .email(user.getEmail())
-                        .code(code)
-                        .expiresAt(LocalDateTime.now().plusMinutes(15))
-                        .build();
-
-                passwordResetTokenRepository.save(resetToken);
-
-                CompletableFuture.runAsync(() -> sendResetEmail(user.getEmail(), code));
-            } catch (Exception e) {
-                System.err.println("WARN: Error en forgotPassword: " + e.getMessage());
-            }
-        });
-
-        employeeRepository.findByEmail(email.trim().toLowerCase()).ifPresent(employee -> {
-            String code = String.format("%06d", new SecureRandom().nextInt(900000) + 100000);
-
-            try {
-                passwordResetTokenRepository.deleteByEmail(employee.getEmail());
-                passwordResetTokenRepository.flush();
-
-                PasswordResetToken resetToken = PasswordResetToken.builder()
-                        .id(UUID.randomUUID().toString())
-                        .email(employee.getEmail())
-                        .code(code)
-                        .expiresAt(LocalDateTime.now().plusMinutes(15))
-                        .build();
-
-                passwordResetTokenRepository.save(resetToken);
-
-                CompletableFuture.runAsync(() -> sendResetEmail(employee.getEmail(), code));
-            } catch (Exception e) {
-                System.err.println("WARN: Error en forgotPassword: " + e.getMessage());
-            }
-        });
+    public void forgotPassword(String emailInput, HttpServletRequest request) {
+        String email = normalizeEmail(emailInput);
+        if (!challenges.checkRequestLimit(email, sourceAddress(request))) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Demasiadas solicitudes. Espera antes de intentar nuevamente.");
+        }
+        User user = userRepository.findByEmail(email).orElse(null);
+        Employee employee = employeeRepository.findByEmail(email).orElse(null);
+        if (user != null && employee == null) {
+            identities.lockForChallenge("client", user.getId());
+            challenges.issue(user.getId(), email, PasswordResetToken.IdentityType.client,
+                    PasswordResetToken.Purpose.PASSWORD_RESET, sourceAddress(request), true);
+        } else if (employee != null && user == null) {
+            identities.lockForChallenge("employee", employee.getId());
+            challenges.issue(employee.getId(), email, PasswordResetToken.IdentityType.employee,
+                    PasswordResetToken.Purpose.PASSWORD_RESET, sourceAddress(request), true);
+        }
+        // Generic response is returned even when the address does not identify an account.
     }
 
     @Transactional
-    public void resetPassword(String email, String token, String newPassword) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByEmailAndCode(email.trim().toLowerCase(), token.trim())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código de verificación inválido o expirado"));
-
-        if (resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
-            passwordResetTokenRepository.delete(resetToken);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El código de verificación ha expirado");
+    public boolean resetPassword(String emailInput, String code, String newPassword) {
+        String email = normalizeEmail(emailInput);
+        try {
+            validatePassword(newPassword);
+        } catch (ResponseStatusException invalidPassword) {
+            return false;
         }
 
-        User user = userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
+        User user = userRepository.findByEmail(email).orElse(null);
+        Employee employee = employeeRepository.findByEmail(email).orElse(null);
+        if ((user == null) == (employee == null)) return false;
+
+        PasswordResetToken.IdentityType identityType = user != null
+                ? PasswordResetToken.IdentityType.client
+                : PasswordResetToken.IdentityType.employee;
+        String identityId = user != null ? user.getId() : employee.getId();
+        identities.lockForChallenge(identityType.name(), identityId);
+        if (!challenges.consumePasswordResetChallenge(identityId, email, code, identityType)) return false;
+
+        String encoded = passwordEncoder.encode(newPassword);
         if (user != null) {
-            user.setPassword(passwordEncoder.encode(newPassword.trim()));
+            user.setPassword(encoded);
             userRepository.save(user);
-
-            clientSessionRepository.findAll().stream()
-                .filter(s -> user.getId().equals(s.getUserId()) && s.getIsActive())
-                .forEach(s -> {
-                    s.setIsActive(false);
-                    clientSessionRepository.save(s);
-                });
+            clientSessionRepository.revokeActiveByUserId(user.getId());
         } else {
-            Employee employee = employeeRepository.findByEmail(email.trim().toLowerCase())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-            employee.setPassword(passwordEncoder.encode(newPassword.trim()));
+            employee.setPassword(encoded);
             employeeRepository.save(employee);
-
-            employeeSessionRepository.findAll().stream()
-                .filter(s -> employee.getId().equals(s.getEmployeeId()) && s.getIsActive())
-                .forEach(s -> {
-                    s.setIsActive(false);
-                    employeeSessionRepository.save(s);
-                });
+            employeeSessionRepository.revokeActiveByEmployeeId(employee.getId());
         }
-
-        passwordResetTokenRepository.delete(resetToken);
+        return true;
     }
 
-    private AuthResponse buildAuthResponse(User user, HttpServletRequest httpReq) {
-        JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(user.getId(), user.getEmail(), user.getRole().name());
+    private AuthResponse createClientSession(User user, HttpServletRequest request) {
+        JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(
+                user.getId(), user.getEmail(), user.getRole().name(), "client");
+        long ttl = Duration.between(Instant.now(), tokenInfo.expiresAt()).toMillis();
+        if (ttl <= 0) throw new IllegalStateException("Invalid token lifetime.");
 
-        try {
-            ClientSession session = ClientSession.builder()
-                    .id(UUID.randomUUID().toString())
-                    .userId(user.getId())
-                    .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
-                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
-                    .isActive(true)
-                    .platform(ClientSession.Platform.mobile)
-                    .expiresAt(tokenInfo.expiresAt())
-                    .build();
-
-            clientSessionRepository.save(session);
-        } catch (Exception e) {
-            System.err.println("WARN: No se pudo guardar la sesión de cliente: " + e.getMessage());
-        }
-
+        ClientSession session = ClientSession.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(user.getId())
+                .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
+                .ipAddress(sourceAddress(request))
+                .isActive(true)
+                .platform(resolveClientPlatform(request))
+                .expiresAt(tokenInfo.expiresAt())
+                .build();
+        clientSessionRepository.saveAndFlush(session);
         return AuthResponse.builder()
                 .token(tokenInfo.token())
-                .user(UserResponse.from(user))
+                .tokenType("Bearer")
+                .expiresInMs(ttl)
+                .user(UserResponse.fromSelf(user))
                 .build();
     }
 
-    private AuthResponse buildEmployeeAuthResponse(Employee employee, HttpServletRequest httpReq) {
-        JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(employee.getId(), employee.getEmail(), employee.getRole().name());
+    private AuthResponse createEmployeeSession(Employee employee, HttpServletRequest request) {
+        JwtUtil.IssuedToken tokenInfo = jwtUtil.issueToken(
+                employee.getId(), employee.getEmail(), employee.getRole().name(), "employee");
+        long ttl = Duration.between(Instant.now(), tokenInfo.expiresAt()).toMillis();
+        if (ttl <= 0) throw new IllegalStateException("Invalid token lifetime.");
 
-        try {
-            EmployeeSession session = EmployeeSession.builder()
-                    .id(UUID.randomUUID().toString())
-                    .employeeId(employee.getId())
-                    .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
-                    .ipAddress(httpReq != null ? httpReq.getRemoteAddr() : "127.0.0.1")
-                    .isActive(true)
-                    .platform(EmployeeSession.Platform.web_admin)
-                    .expiresAt(tokenInfo.expiresAt())
-                    .build();
-
-            employeeSessionRepository.save(session);
-        } catch (Exception e) {
-            System.err.println("WARN: No se pudo guardar la sesión de empleado: " + e.getMessage());
-        }
-
+        EmployeeSession.Platform platform = employee.getRole() == Employee.Role.moderador
+                ? EmployeeSession.Platform.web_moderacion
+                : EmployeeSession.Platform.web_admin;
+        EmployeeSession session = EmployeeSession.builder()
+                .id(UUID.randomUUID().toString())
+                .employeeId(employee.getId())
+                .sessionToken(jwtUtil.sessionTokenKey(tokenInfo.token()))
+                .ipAddress(sourceAddress(request))
+                .isActive(true)
+                .platform(platform)
+                .expiresAt(tokenInfo.expiresAt())
+                .build();
+        employeeSessionRepository.saveAndFlush(session);
         return AuthResponse.builder()
                 .token(tokenInfo.token())
-                .user(UserResponse.from(employee))
+                .tokenType("Bearer")
+                .expiresInMs(ttl)
+                .user(UserResponse.fromSelf(employee))
                 .build();
     }
 
-    private void sendResetEmail(String toEmail, String code) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(senderEmail);
-            helper.setTo(toEmail);
-            helper.setSubject("Código de Recuperación de Contraseña - SavorSync 🔐");
-
-            String htmlBody = "<div style='font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9;'>"
-                    + "<h2 style='color: #FF5A5F;'>SavorSync 🍔</h2>"
-                    + "<p>Hola,</p>"
-                    + "<p>Hemos recibido una solicitud para restablecer tu contraseña en SavorSync.</p>"
-                    + "<p>Tu código de verificación de 6 dígitos es:</p>"
-                    + "<h1 style='color: #333; letter-spacing: 5px; background: #eee; padding: 10px; display: inline-block;'>" + code + "</h1>"
-                    + "<p>Este código vencerá en 15 minutos. Si no solicitaste este cambio, puedes ignorar este mensaje.</p>"
-                    + "<br><p>El equipo de SavorSync</p>"
-                    + "</div>";
-
-            helper.setText(htmlBody, true);
-            mailSender.send(message);
-        } catch (Exception e) {
-            System.err.println("ERROR enviando correo SMTP: " + e.getMessage());
+    private static ClientSession.Platform resolveClientPlatform(HttpServletRequest request) {
+        String declared = request == null ? null : request.getHeader("X-Platform");
+        if (declared == null || declared.isBlank() || "mobile".equalsIgnoreCase(declared)) {
+            return ClientSession.Platform.mobile;
         }
+        if ("web".equalsIgnoreCase(declared)) {
+            return ClientSession.Platform.web_restaurante;
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Plataforma declarada no admitida.");
+    }
+
+    private static String sourceAddress(HttpServletRequest request) {
+        String address = request == null ? null : request.getRemoteAddr();
+        return address == null || address.isBlank() ? "unknown" : address;
+    }
+
+    private static String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeUsername(String username) {
+        return username == null ? "" : username.trim();
+    }
+
+    private static String normalizeRequestedRole(String requestedRole) {
+        String role = requestedRole == null || requestedRole.isBlank()
+                ? "foodie" : requestedRole.trim().toLowerCase(Locale.ROOT);
+        if (!"foodie".equals(role) && !"restaurant_admin".equals(role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tipo de cuenta no permitido.");
+        }
+        return role;
+    }
+
+    private static void validatePassword(String password) {
+        if (password == null || password.length() < 8 || password.length() > 100
+                || password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "La contraseña debe tener al menos 8 caracteres y no exceder el límite seguro de BCrypt.");
+        }
+    }
+
+    private static ResponseStatusException invalidCredentials() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas.");
     }
 }

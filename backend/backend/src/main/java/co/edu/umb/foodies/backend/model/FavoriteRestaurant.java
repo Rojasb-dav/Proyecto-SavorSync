@@ -15,13 +15,13 @@ import java.util.UUID;
 public class FavoriteRestaurant {
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clientId;
 
-    @Column(name = "restaurante_id", length = 36, nullable = false)
+    @Column(name = "restaurante_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String restaurantId;
 
     @Column(name = "created_at", updatable = false)

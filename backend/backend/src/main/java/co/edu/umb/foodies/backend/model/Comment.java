@@ -25,32 +25,32 @@ public class Comment {
 
     @Id
     @EqualsAndHashCode.Include
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
     @JsonProperty("postId")
     @JsonAlias({"publicacion_id", "postId", "post_id"})
-    @Column(name = "publicacion_id", length = 36, nullable = false)
+    @Column(name = "publicacion_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String postId;
 
     @JsonProperty("clienteId")
     @JsonAlias({"cliente_id", "authorId", "author_id", "userId", "user_id", "clienteId"})
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clienteId;
 
     @JsonProperty("parentId")
     @JsonAlias({"parent_id", "parentId"})
-    @Column(name = "parent_id", length = 36)
+    @Column(name = "parent_id", length = 36, columnDefinition = "CHAR(36)")
     private String parentId;
 
     @JsonProperty("content")
     @JsonAlias({"contenido", "content"})
-    @Column(name = "contenido", nullable = false, length = 2000)
+    @Column(name = "contenido", nullable = false, length = 200)
     private String content;
 
     @JsonProperty("status")
     @JsonAlias({"estado", "status"})
-    @Column(name = "estado", length = 50)
+    @Column(name = "estado", columnDefinition = "ENUM('activo','oculto','eliminado')")
     @Builder.Default
     private String status = "activo";
 

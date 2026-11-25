@@ -21,20 +21,20 @@ public class Post {
 
     @Id
     @EqualsAndHashCode.Include
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "cliente_id", nullable = false)
+    @JoinColumn(name = "cliente_id", nullable = false, columnDefinition = "CHAR(36)")
     private User user;
 
-    @Column(name = "restaurante_id", length = 36)
+    @Column(name = "restaurante_id", length = 36, columnDefinition = "CHAR(36)")
     private String restaurantId;
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String contenido;
 
-    @Column(name = "calificacion", nullable = false)
+    @Column(name = "calificacion", nullable = false, columnDefinition = "TINYINT")
     private Double rating;
 
     @Column(name = "conteo_likes")
@@ -54,7 +54,7 @@ public class Post {
     }
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado")
+    @Column(name = "estado", columnDefinition = "ENUM('borrador','publicada','oculta','en_revision')")
     @Builder.Default
     private PostStatus status = PostStatus.publicada;
 

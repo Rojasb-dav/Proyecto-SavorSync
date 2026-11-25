@@ -18,6 +18,31 @@ class AuthResult {
   });
 }
 
+class RegistrationChallenge {
+  final String challengeId;
+  final int expiresInMs;
+  final String? requestedRole;
+
+  const RegistrationChallenge({
+    required this.challengeId,
+    required this.expiresInMs,
+    this.requestedRole,
+  });
+
+  factory RegistrationChallenge.fromJson(Map<String, dynamic> json) {
+    final id = json['challengeId'];
+    final expiry = json['expiresInMs'];
+    if (id is! String || id.isEmpty || expiry is! num || expiry <= 0) {
+      throw const FormatException('El servidor no confirmó el envío del código.');
+    }
+    return RegistrationChallenge(
+      challengeId: id,
+      expiresInMs: expiry.toInt(),
+      requestedRole: json['requestedRole'] as String?,
+    );
+  }
+}
+
 class AuthService {
   AuthService({Dio? dio, TokenStorage? tokenStorage})
       : _dio = dio ?? ApiService().dio,
@@ -31,25 +56,24 @@ class AuthService {
       final response = await _dio.post(
         '/auth/login',
         options: ApiService.authRequestOptions(),
-        data: {
-          'email': email.trim(),
-          'password': password.trim(),
-        },
+        data: {'email': email.trim(), 'password': password},
       );
-
       return await _acceptSession(response.data);
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'Error al iniciar sesión.'));
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'Error al iniciar sesión.'));
+    } on FormatException {
+      rethrow;
     } catch (_) {
       throw Exception('No se pudo iniciar sesión correctamente.');
     }
   }
 
-  Future<AuthResult> register({
+  Future<RegistrationChallenge> register({
     required String email,
     required String username,
     required String password,
     String? fullName,
+    String requestedRole = 'foodie',
   }) async {
     try {
       final response = await _dio.post(
@@ -58,14 +82,20 @@ class AuthService {
         data: {
           'email': email.trim(),
           'username': username.trim(),
-          'password': password.trim(),
+          'password': password,
           'fullName': fullName?.trim() ?? username.trim(),
+          'role': requestedRole,
         },
       );
-
-      return await _acceptSession(response.data, expectedRole: 'foodie');
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'Error al registrar usuario.'));
+      final challenge = RegistrationChallenge.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+      await _savePendingVerification(email.trim(), challenge);
+      return challenge;
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'Error al registrar usuario.'));
+    } on FormatException {
+      rethrow;
     } catch (_) {
       throw Exception('No se pudo completar el registro correctamente.');
     }
@@ -81,50 +111,98 @@ class AuthService {
       final response = await _dio.post('/auth/moderators', data: {
         'email': email.trim(),
         'username': username.trim(),
-        'password': password.trim(),
+        'password': password,
         'fullName': fullName.trim(),
       });
       if (response.statusCode != 201 ||
-          _authenticatedUser(response.data).role != 'moderador') {
+          _authenticatedUser(response.data, requireVerified: false).role != 'moderador') {
         throw const FormatException('El servidor no confirmó el alta del moderador.');
       }
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'No se pudo crear el moderador.'));
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'No se pudo crear el moderador.'));
     }
   }
 
-  Future<void> sendVerificationCode() async {
+  Future<RegistrationChallenge?> resendVerificationCode({
+    required String email,
+    String? challengeId,
+    String? password,
+  }) async {
     try {
-      await _dio.post('/auth/email/verification');
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'No se pudo enviar el código.'));
+      final response = await _dio.post(
+        '/auth/email/verification',
+        options: ApiService.authRequestOptions(),
+        data: {
+          'email': email.trim(),
+          if (challengeId != null) 'challengeId': challengeId,
+          if (password != null) 'password': password,
+        },
+      );
+      final data = Map<String, dynamic>.from(response.data as Map);
+      if (data['challengeId'] == null) return null;
+      final challenge = RegistrationChallenge.fromJson(data);
+      await _savePendingVerification(email.trim(), challenge);
+      return challenge;
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'No se pudo enviar el código.'));
+    } on FormatException {
+      rethrow;
     }
   }
 
-  Future<Map<String, dynamic>> verifyEmail(String code) async {
+  Future<AuthResult> verifyEmail({
+    required String challengeId,
+    required String code,
+  }) async {
     try {
-      final response = await _dio.post('/auth/email/verify', data: {'code': code.trim()});
-      if (!_authenticatedUser(response.data).emailVerified) {
+      final response = await _dio.post(
+        '/auth/email/verify',
+        options: ApiService.authRequestOptions(),
+        data: {'challengeId': challengeId, 'code': code},
+      );
+      final result = await _acceptSession(response.data);
+      if (!result.user.emailVerified) {
+        await _tokenStorage.clearIfCurrentToken(result.token);
         throw const FormatException('El servidor no confirmó la verificación.');
       }
-      return Map<String, dynamic>.from(response.data as Map);
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'No se pudo verificar el correo.'));
+      await _tokenStorage.clearPendingVerification();
+      return result;
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'No se pudo verificar el correo.'));
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw Exception('No se pudo verificar el correo.');
     }
   }
 
-  Future<void> requestRestaurantAdmin(String code, String description) async {
+  Future<Map<String, Object>?> restorePendingVerification() =>
+      _tokenStorage.getPendingVerification();
+
+  Future<void> clearPendingVerification() =>
+      _tokenStorage.clearPendingVerification();
+
+  Future<void> _savePendingVerification(
+    String email,
+    RegistrationChallenge challenge,
+  ) => _tokenStorage.savePendingVerification(
+        email: email,
+        challengeId: challenge.challengeId,
+        expiresInMs: challenge.expiresInMs,
+        requestedRole: challenge.requestedRole,
+      );
+
+  Future<void> requestRestaurantAdmin(String description) async {
     try {
       final response = await _dio.post('/auth/restaurant-admin/request', data: {
-        'code': code.trim(),
         'description': description.trim(),
       });
       final ticket = response.data;
-      if (ticket is! Map<String, dynamic> || ticket['id'] is! String) {
+      if (ticket is! Map || ticket['id'] is! String) {
         throw const FormatException('El servidor no confirmó la solicitud.');
       }
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'No se pudo registrar la solicitud.'));
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'No se pudo registrar la solicitud.'));
     }
   }
 
@@ -135,47 +213,50 @@ class AuthService {
       if (_authenticatedUser(response.data).role != 'restaurant_admin') {
         throw const FormatException('El servidor no confirmó la aprobación.');
       }
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'No se pudo aprobar la solicitud.'));
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'No se pudo aprobar la solicitud.'));
     }
   }
 
-  Future<AuthResult> _acceptSession(Object? data, {String? expectedRole}) async {
+  Future<AuthResult> _acceptSession(Object? data) async {
     if (data is! Map<String, dynamic>) {
       throw const FormatException('Respuesta de sesión inválida.');
     }
 
     final token = data['token'];
-    final tokenType = data['tokenType'] ?? 'Bearer';
+    final tokenType = data['tokenType'];
     final expiresInMs = data['expiresInMs'];
     if (token is! String ||
-        token.trim().isEmpty ||
+        token.isEmpty ||
         tokenType is! String ||
         tokenType.toLowerCase() != 'bearer' ||
-        (expiresInMs != null && (expiresInMs is! int || expiresInMs <= 0))) {
+        expiresInMs is! num ||
+        expiresInMs <= 0) {
       throw const FormatException('Respuesta de sesión inválida.');
     }
 
     final user = _authenticatedUser(data['user']);
-    if (expectedRole != null && user.role != expectedRole) {
-      throw const FormatException('El servidor devolvió un rol inesperado.');
-    }
     await _tokenStorage.saveToken(token);
     return AuthResult(
       token: token,
       user: user,
       tokenType: tokenType,
-      expiresInMs: expiresInMs as int?,
+      expiresInMs: expiresInMs.toInt(),
     );
   }
 
-  UserModel _authenticatedUser(Object? data) {
+  UserModel _authenticatedUser(
+    Object? data, {
+    bool requireVerified = true,
+  }) {
     if (data is! Map<String, dynamic>) {
       throw const FormatException('Respuesta de usuario inválida.');
     }
-
     final user = UserModel.fromJson(data);
-    if (user.id.isEmpty || user.role?.isNotEmpty != true || !user.isActive) {
+    if (user.id.isEmpty ||
+        user.role?.isNotEmpty != true ||
+        !user.isActive ||
+        (requireVerified && !user.emailVerified)) {
       throw const FormatException('Respuesta de usuario inválida.');
     }
     return user;
@@ -183,7 +264,7 @@ class AuthService {
 
   String _authError(DioException error, String fallback) {
     final data = error.response?.data;
-    if (data is Map<String, dynamic>) {
+    if (data is Map) {
       final message = data['message'] ?? data['error'];
       if (message is String && message.isNotEmpty) return message;
     }
@@ -209,8 +290,8 @@ class AuthService {
         options: ApiService.authRequestOptions(token),
       );
       return true;
-    } on DioException catch (e) {
-      return e.response?.statusCode == 401;
+    } on DioException catch (error) {
+      return error.response?.statusCode == 401;
     } finally {
       await _tokenStorage.clearIfCurrentToken(token);
     }
@@ -226,9 +307,9 @@ class AuthService {
         options: ApiService.authRequestOptions(token),
       );
       if (await _tokenStorage.getToken() != token) return null;
-      return _authenticatedUser(response.data);
-    } on DioException catch (e) {
-      if (e.response?.statusCode != 401) rethrow;
+      return _authenticatedUser(Map<String, dynamic>.from(response.data as Map));
+    } on DioException catch (error) {
+      if (error.response?.statusCode != 401) rethrow;
       await _tokenStorage.clearIfCurrentToken(token);
       return null;
     }
@@ -241,9 +322,9 @@ class AuthService {
         options: ApiService.authRequestOptions(),
         data: {'email': email.trim()},
       );
-    } on DioException catch (e) {
+    } on DioException catch (error) {
       throw Exception(_authError(
-        e,
+        error,
         'Error al solicitar restablecimiento de contraseña.',
       ));
     }
@@ -260,12 +341,12 @@ class AuthService {
         options: ApiService.authRequestOptions(),
         data: {
           'email': email.trim(),
-          'code': code.trim(),
-          'newPassword': newPassword.trim(),
+          'code': code,
+          'newPassword': newPassword,
         },
       );
-    } on DioException catch (e) {
-      throw Exception(_authError(e, 'Error al actualizar la contraseña.'));
+    } on DioException catch (error) {
+      throw Exception(_authError(error, 'Error al actualizar la contraseña.'));
     }
   }
 }

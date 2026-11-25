@@ -21,10 +21,10 @@ public class Restaurant {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "owner_id", length = 36)
+    @Column(name = "owner_id", length = 36, columnDefinition = "CHAR(36)")
     private String ownerId;
 
     @Column(name = "nombre", nullable = false, length = 100)
@@ -57,7 +57,7 @@ public class Restaurant {
     @Column(name = "categoria", length = 50)
     private String category;
 
-    @Column(name = "rango_precio")
+    @Column(name = "rango_precio", columnDefinition = "TINYINT")
     private Integer priceRange;
 
     @Column(name = "rating_promedio", precision = 3, scale = 2)
@@ -67,7 +67,7 @@ public class Restaurant {
     private Integer reviewsCount;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado")
+    @Column(name = "estado", columnDefinition = "ENUM('borrador','pendiente','activo','suspendido')")
     private RestaurantStatus status;
 
     @Column(name = "created_at", updatable = false)

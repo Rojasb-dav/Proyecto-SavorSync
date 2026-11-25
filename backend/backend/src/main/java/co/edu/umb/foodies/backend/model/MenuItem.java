@@ -17,10 +17,10 @@ import java.util.UUID;
 public class MenuItem {
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "restaurante_id", length = 36, nullable = false)
+    @Column(name = "restaurante_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String restaurantId;
 
     @Column(name = "nombre", nullable = false, length = 100)

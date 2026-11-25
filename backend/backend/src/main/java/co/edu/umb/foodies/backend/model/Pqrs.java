@@ -24,17 +24,17 @@ public class Pqrs {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clienteId;
 
-    @Column(name = "empleado_id", length = 36)
+    @Column(name = "empleado_id", length = 36, columnDefinition = "CHAR(36)")
     private String empleadoId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo", nullable = false)
+    @Column(name = "tipo", nullable = false, columnDefinition = "ENUM('peticion','queja','reclamo','sugerencia')")
     private PqrsType tipo;
 
     @Column(name = "asunto", nullable = false, length = 150)
@@ -44,7 +44,7 @@ public class Pqrs {
     private String descripcion;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado")
+    @Column(name = "estado", columnDefinition = "ENUM('recibida','en_gestion','resuelta','cerrada')")
     @Builder.Default
     private PqrsStatus estado = PqrsStatus.recibida;
 

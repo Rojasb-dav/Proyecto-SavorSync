@@ -21,10 +21,10 @@ public class RestaurantPromotion {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "restaurante_id", length = 36, nullable = false)
+    @Column(name = "restaurante_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String restaurantId;
 
     @Column(name = "titulo", nullable = false, length = 100)
@@ -34,7 +34,7 @@ public class RestaurantPromotion {
     private String description;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo_descuento")
+    @Column(name = "tipo_descuento", columnDefinition = "ENUM('porcentaje','fijo')")
     @Builder.Default
     private DiscountType discountType = DiscountType.porcentaje;
 

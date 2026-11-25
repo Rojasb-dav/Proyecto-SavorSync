@@ -19,17 +19,17 @@ public class ModerationAction {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "empleado_id", length = 36, nullable = false)
+    @Column(name = "empleado_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String employeeId;
 
-    @Column(name = "reporte_id", length = 36, nullable = false)
+    @Column(name = "reporte_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String reportId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "accion", nullable = false)
+    @Column(name = "accion", nullable = false, columnDefinition = "ENUM('aprobado','oculto','eliminado','advertido','baneado')")
     private ActionType action;
 
     @Column(name = "notas", columnDefinition = "TEXT")

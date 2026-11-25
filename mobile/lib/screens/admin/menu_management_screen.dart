@@ -330,34 +330,41 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
                     onPressed: () async {
                       if (nameCtrl.text.trim().isEmpty) return;
-                      final price = double.tryParse(priceCtrl.text.trim()) ?? 0;
-                      String? finalUrl = existingUrl;
+                      try {
+                        final price = double.tryParse(priceCtrl.text.trim()) ?? 0;
+                        String? finalUrl = existingUrl;
 
-                      if (pickedFile != null) {
-                        final uploaded = await CloudinaryService.uploadImageXFile(pickedFile!);
-                        if (uploaded != null) finalUrl = uploaded;
+                        if (pickedFile != null) {
+                          finalUrl = await CloudinaryService.uploadImageXFile(pickedFile!);
+                        }
+
+                        final newItem = MenuItemModel(
+                          id: item?.id ?? 'm_${DateTime.now().millisecondsSinceEpoch}',
+                          restaurantId: _restaurant!.id,
+                          name: nameCtrl.text.trim(),
+                          description: descCtrl.text.trim(),
+                          price: price,
+                          category: cat,
+                          imageUrl: finalUrl,
+                          isAvailable: item?.isAvailable ?? true,
+                        );
+
+                        if (item == null) {
+                          setState(() => _menuItems.add(newItem));
+                        } else {
+                          setState(() {
+                            final idx = _menuItems.indexWhere((m) => m.id == item.id);
+                            if (idx != -1) _menuItems[idx] = newItem;
+                          });
+                        }
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      } catch (error) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('No se guardó el menú: $error')),
+                          );
+                        }
                       }
-
-                      final newItem = MenuItemModel(
-                        id: item?.id ?? 'm_${DateTime.now().millisecondsSinceEpoch}',
-                        restaurantId: _restaurant!.id,
-                        name: nameCtrl.text.trim(),
-                        description: descCtrl.text.trim(),
-                        price: price,
-                        category: cat,
-                        imageUrl: finalUrl,
-                        isAvailable: item?.isAvailable ?? true,
-                      );
-
-                      if (item == null) {
-                        setState(() => _menuItems.add(newItem));
-                      } else {
-                        setState(() {
-                          final idx = _menuItems.indexWhere((m) => m.id == item.id);
-                          if (idx != -1) _menuItems[idx] = newItem;
-                        });
-                      }
-                      if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: Text(item == null ? 'Guardar Plato' : 'Actualizar', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),

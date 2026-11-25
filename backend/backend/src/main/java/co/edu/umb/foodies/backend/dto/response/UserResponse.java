@@ -31,11 +31,25 @@ public class UserResponse {
     private int postsCount;
     private Boolean isFollowing;
 
-    public static UserResponse from(User u) {
-        return from(u, null);
+    public static UserResponse fromSelf(User u) {
+        if (u == null) return null;
+        return buildFromUser(u, u.getEmail(), u.getPhone(), null);
     }
 
-    public static UserResponse from(Employee e) {
+    public static UserResponse fromPublic(User u, String viewerId) {
+        if (u == null) return null;
+        boolean isOwner = viewerId != null && viewerId.equals(u.getId());
+        String safeEmail = isOwner ? u.getEmail() : null;
+        String safePhone = isOwner ? u.getPhone() : null;
+        return buildFromUser(u, safeEmail, safePhone, viewerId);
+    }
+
+    public static UserResponse fromAdmin(User u) {
+        if (u == null) return null;
+        return buildFromUser(u, u.getEmail(), u.getPhone(), null);
+    }
+
+    public static UserResponse fromSelf(Employee e) {
         if (e == null) return null;
         return UserResponse.builder()
                 .id(e.getId())
@@ -44,20 +58,13 @@ public class UserResponse {
                 .fullName(e.getFullName())
                 .role(e.getRole() != null ? e.getRole().name() : null)
                 .isActive(e.getIsActive())
-                .emailVerified(true)
+                .emailVerified(e.getEmailVerified())
                 .createdAt(e.getCreatedAt())
                 .updatedAt(e.getUpdatedAt())
                 .build();
     }
 
-    public static UserResponse from(User u, String currentUserId) {
-        if (u == null) return null;
-
-        // P1.9 Fix: Proteger email y teléfono si el que consulta no es el dueño ni un empleado admin
-        boolean isOwnerOrAdmin = currentUserId != null && currentUserId.equals(u.getId());
-        String safeEmail = isOwnerOrAdmin ? u.getEmail() : null;
-        String safePhone = isOwnerOrAdmin ? u.getPhone() : null;
-
+    private static UserResponse buildFromUser(User u, String emailToSet, String phoneToSet, String currentUserId) {
         boolean isFollowing = false;
         try {
             if (currentUserId != null && u.getFollowers() != null) {
@@ -68,34 +75,28 @@ public class UserResponse {
 
         int followersCount = 0;
         try {
-            if (u.getFollowers() != null) {
-                followersCount = u.getFollowers().size();
-            }
+            if (u.getFollowers() != null) followersCount = u.getFollowers().size();
         } catch (Exception ignored) {}
 
         int followingCount = 0;
         try {
-            if (u.getFollowing() != null) {
-                followingCount = u.getFollowing().size();
-            }
+            if (u.getFollowing() != null) followingCount = u.getFollowing().size();
         } catch (Exception ignored) {}
 
         int postsCount = 0;
         try {
-            if (u.getPosts() != null) {
-                postsCount = u.getPosts().size();
-            }
+            if (u.getPosts() != null) postsCount = u.getPosts().size();
         } catch (Exception ignored) {}
 
         return UserResponse.builder()
                 .id(u.getId())
-                .email(safeEmail)
+                .email(emailToSet)
                 .username(u.getUsername())
                 .fullName(u.getFullName())
                 .role(u.getRole() != null ? u.getRole().name() : null)
                 .avatarUrl(u.getAvatarUrl())
                 .bio(u.getBio())
-                .phone(safePhone)
+                .phone(phoneToSet)
                 .isActive(u.getIsActive())
                 .emailVerified(u.getEmailVerified())
                 .createdAt(u.getCreatedAt())

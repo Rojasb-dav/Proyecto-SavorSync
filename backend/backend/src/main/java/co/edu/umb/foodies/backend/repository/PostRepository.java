@@ -18,6 +18,8 @@ public interface PostRepository extends JpaRepository<Post, String> {
     @Query("""
             select count(p) from Post p
             where p.id = :postId
+              and p.user.isActive = true
+              and p.user.emailVerified = true
               and ((p.isPublic = true and p.status = :publicStatus) or p.user.id = :viewerId)
             """)
     long countVisiblePost(@Param("postId") String postId, @Param("viewerId") String viewerId,

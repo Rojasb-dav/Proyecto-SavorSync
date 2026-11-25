@@ -32,18 +32,18 @@ public class Notification {
     }
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
     @JsonProperty("clienteId")
     @JsonAlias({"userId", "cliente_id", "targetUserId", "clienteId"})
-    @Column(name = "cliente_id", length = 36, nullable = false)
+    @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clienteId;
 
     @JsonProperty("type")
     @JsonAlias({"tipo", "type"})
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo", nullable = false)
+    @Column(name = "tipo", nullable = false, columnDefinition = "ENUM('like','comentario','seguidor','respuesta_resena','promocion','reserva','pqrs')")
     private NotificationType type;
 
     @JsonProperty("title")
@@ -63,7 +63,7 @@ public class Notification {
     private Boolean read = false;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "canal")
+    @Column(name = "canal", columnDefinition = "ENUM('push','email','in_app')")
     @Builder.Default
     private Channel channel = Channel.in_app;
 

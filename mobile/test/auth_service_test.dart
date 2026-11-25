@@ -12,6 +12,7 @@ const _userJson = {
   'username': 'cuenta',
   'role': 'foodie',
   'isActive': true,
+  'emailVerified': true,
 };
 
 void main() {
@@ -50,6 +51,48 @@ void main() {
     expect(result.tokenType, 'Bearer');
     expect(result.expiresInMs, 840000);
     expect(await storage.getToken(), 'issued-token');
+  });
+
+  test('restores the requested restaurant role and replaces its challenge on resend',
+      () async {
+    final dio = Dio();
+    dio.interceptors.add(InterceptorsWrapper(onRequest: (request, handler) {
+      final registering = request.path == '/auth/register';
+      if (registering) {
+        expect(request.data['role'], 'restaurant_admin');
+      } else {
+        expect(request.path, '/auth/email/verification');
+        expect(request.data['challengeId'], 'initial-challenge');
+      }
+      handler.resolve(Response(requestOptions: request, statusCode: 202, data: {
+        'verificationRequired': true,
+        'challengeId': registering ? 'initial-challenge' : 'replacement',
+        'expiresInMs': 900000,
+        'requestedRole': 'restaurant_admin',
+      }));
+    }));
+    final service = AuthService(dio: dio, tokenStorage: storage);
+    await service.register(
+      email: 'cuenta@example.test',
+      username: 'cuenta',
+      password: 'a-test-password',
+      requestedRole: 'restaurant_admin',
+    );
+
+    final restored = AuthProvider(authService: service);
+    addTearDown(restored.dispose);
+    await restored.bootstrap();
+    expect(restored.user, isNull);
+    expect(restored.pendingRequestedRole, 'restaurant_admin');
+    expect(restored.pendingVerification?.challengeId, 'initial-challenge');
+    expect(await restored.resendPendingVerification(), isTrue);
+    expect(restored.pendingVerification?.challengeId, 'replacement');
+
+    final reopened = AuthProvider(authService: service);
+    addTearDown(reopened.dispose);
+    await reopened.bootstrap();
+    expect(reopened.pendingRequestedRole, 'restaurant_admin');
+    expect(reopened.pendingVerification?.challengeId, 'replacement');
   });
 
   test('restores the identity verified by the session endpoint', () async {

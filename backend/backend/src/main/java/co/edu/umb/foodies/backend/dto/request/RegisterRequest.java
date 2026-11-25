@@ -1,13 +1,11 @@
 package co.edu.umb.foodies.backend.dto.request;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
-@JsonIgnoreProperties("role")
 public class RegisterRequest {
 
     @NotBlank
@@ -20,9 +18,13 @@ public class RegisterRequest {
     private String username;
 
     @NotBlank
-    @Size(min = 6, max = 100)
+    @Size(min = 8, max = 100)
     private String password;
 
+    @NotBlank
     @Size(max = 100)
     private String fullName;
+
+    @Size(max = 50)
+    private String role;
 }

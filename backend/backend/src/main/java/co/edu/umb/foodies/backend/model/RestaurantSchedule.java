@@ -16,13 +16,13 @@ import java.util.UUID;
 public class RestaurantSchedule {
 
     @Id
-    @Column(length = 36, nullable = false, updatable = false)
+    @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "restaurante_id", length = 36, nullable = false)
+    @Column(name = "restaurante_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String restaurantId;
 
-    @Column(name = "dia_semana", nullable = false)
+    @Column(name = "dia_semana", nullable = false, columnDefinition = "TINYINT")
     private Integer dayOfWeek;
 
     @Column(name = "hora_apertura")

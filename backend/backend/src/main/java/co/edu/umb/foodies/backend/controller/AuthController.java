@@ -1,24 +1,29 @@
 package co.edu.umb.foodies.backend.controller;
 
+import co.edu.umb.foodies.backend.dto.request.EmailVerificationRequest;
+import co.edu.umb.foodies.backend.dto.request.ForgotPasswordRequest;
 import co.edu.umb.foodies.backend.dto.request.LoginRequest;
 import co.edu.umb.foodies.backend.dto.request.RegisterRequest;
+import co.edu.umb.foodies.backend.dto.request.ResetPasswordRequest;
 import co.edu.umb.foodies.backend.dto.response.AuthResponse;
+import co.edu.umb.foodies.backend.dto.response.RegistrationResponse;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
+import co.edu.umb.foodies.backend.model.Pqrs;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import co.edu.umb.foodies.backend.service.AuthService;
 import co.edu.umb.foodies.backend.service.IdentityService;
-import co.edu.umb.foodies.backend.model.Pqrs;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-import org.springframework.http.HttpStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 
@@ -31,35 +36,50 @@ public class AuthController {
     private final IdentityService identityService;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest req,
-                                                 HttpServletRequest httpReq) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(authService.register(req, httpReq));
+    public ResponseEntity<RegistrationResponse> register(@Valid @RequestBody RegisterRequest request,
+                                                          HttpServletRequest httpRequest) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).cacheControl(CacheControl.noStore())
+                .body(authService.register(request, httpRequest));
     }
 
     @PostMapping("/moderators")
-    public ResponseEntity<UserResponse> createModerator(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<UserResponse> createModerator(@Valid @RequestBody RegisterRequest request,
+                                                         HttpServletRequest httpRequest) {
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
-                .body(authService.createModerator(request));
+                .body(authService.createModerator(request, httpRequest));
     }
 
     @PostMapping("/email/verification")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void sendEmailVerification(@AuthenticationPrincipal String userId) {
-        identityService.sendVerification(userId);
+    public ResponseEntity<RegistrationResponse> sendEmailVerification(
+            @Valid @RequestBody EmailVerificationRequest request,
+            HttpServletRequest httpRequest) {
+        if (request.isVerifyRequest()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Usa la operación de verificación para validar un código.");
+        }
+        return ResponseEntity.accepted().cacheControl(CacheControl.noStore())
+                .body(authService.requestEmailVerification(request, httpRequest));
     }
 
     @PostMapping("/email/verify")
-    public ResponseEntity<UserResponse> verifyEmail(@AuthenticationPrincipal String userId,
-                                                     @Valid @RequestBody EmailCode request) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(identityService.verifyEmail(userId, request.code().trim()));
+    public ResponseEntity<AuthResponse> verifyEmail(@Valid @RequestBody EmailVerificationRequest request,
+                                                     HttpServletRequest httpRequest) {
+        if (!request.isVerifyRequest()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Se requieren el identificador del desafío y el código de seis dígitos.");
+        }
+        AuthResponse response = authService.verifyEmail(request.challengeId(), request.code(), httpRequest);
+        if (response == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El código no es válido o expiró.");
+        }
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
     }
 
     @PostMapping("/restaurant-admin/request")
     public ResponseEntity<Pqrs> requestRestaurantAdmin(@AuthenticationPrincipal String userId,
                                                         @Valid @RequestBody RestaurantAdminRequest request) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(identityService.requestRestaurantAdmin(userId, request.code().trim(), request.description()));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).cacheControl(CacheControl.noStore())
+                .body(identityService.requestRestaurantAdmin(userId, request.description()));
     }
 
     @PostMapping("/restaurant-admin/requests/{id}/approve")
@@ -68,37 +88,48 @@ public class AuthController {
                 .body(identityService.approveRestaurantAdmin(id));
     }
 
-    public record EmailCode(@NotBlank @Size(max = 40) String code) {}
-
-    public record RestaurantAdminRequest(@NotBlank @Size(max = 40) String code,
-                                         @NotBlank @Size(max = 2000) String description) {}
-
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest req,
-                                              HttpServletRequest httpReq) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(authService.login(req, httpReq));
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request,
+                                              HttpServletRequest httpRequest) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(authService.login(request, httpRequest));
     }
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> currentUser(@AuthenticationPrincipal String userId) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(authService.currentUser(userId));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(authService.currentUser(userId));
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Map<String, String>> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
+    public ResponseEntity<Map<String, String>> logout(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
         authService.logout(JwtUtil.bearerToken(authorization));
-        return ResponseEntity.ok(Map.of("message", "Sesión cerrada"));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(Map.of("message", "Sesión cerrada"));
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<Map<String, String>> forgotPassword(@RequestBody Map<String, String> req) {
-        authService.forgotPassword(req.get("email"));
-        return ResponseEntity.ok(Map.of("message", "Si el correo existe, se envió un código de 6 dígitos"));
+    public ResponseEntity<Map<String, String>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request,
+            HttpServletRequest httpRequest) {
+        authService.forgotPassword(request.email(), httpRequest);
+        return ResponseEntity.accepted().cacheControl(CacheControl.noStore())
+                .body(Map.of("message", "Si el correo existe, se enviará un código."));
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<Map<String, String>> resetPassword(@RequestBody Map<String, String> req) {
-        authService.resetPassword(req.get("email"), req.get("code"), req.get("newPassword"));
-        return ResponseEntity.ok(Map.of("message", "Contraseña actualizada con éxito"));
+    public ResponseEntity<Map<String, String>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+        if (!authService.resetPassword(request.email(), request.code(), request.newPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El código no es válido, expiró o la contraseña no cumple los requisitos.");
+        }
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(Map.of("message", "Contraseña actualizada. Inicia sesión nuevamente."));
     }
+
+    public record RestaurantAdminRequest(
+            @NotBlank @Size(max = 2000) String description
+    ) {}
 }

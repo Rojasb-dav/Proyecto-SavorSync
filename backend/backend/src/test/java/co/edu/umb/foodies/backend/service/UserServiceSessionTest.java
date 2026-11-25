@@ -1,8 +1,8 @@
 package co.edu.umb.foodies.backend.service;
 
-import co.edu.umb.foodies.backend.dto.response.UserResponse;
+import co.edu.umb.foodies.backend.model.ClientSession;
 import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.AuthSessionRepository;
+import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,55 +10,48 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceSessionTest {
 
     @Mock private UserRepository users;
-    @Mock private NotificationRepository notifications;
-    @Mock private AuthSessionRepository sessions;
+    @Mock private NotificationRepository notificationRepository;
+    @Mock private ClientSessionRepository clientSessionRepository;
+    @Mock private AccountIdentityRegistry identities;
+    @Mock private CloudinaryAssetRegistry assetRegistry;
 
     private UserService service;
-    private User user;
+    private User target;
 
     @BeforeEach
     void setUp() {
-        service = new UserService(users, notifications, sessions);
-        user = User.builder()
+        service = new UserService(users, notificationRepository, clientSessionRepository, identities, assetRegistry);
+        target = User.builder()
                 .id(UUID.randomUUID().toString())
                 .role(User.Role.foodie)
+                .isActive(true)
                 .build();
-        when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
-        when(users.save(user)).thenReturn(user);
     }
 
     @Test
-    void suspendingAccountRevokesAllItsSessions() {
-        user.setIsActive(true);
+    void suspendingUserRevokesOnlySessionsOwnedByThatUser() {
+        when(users.findByIdForUpdate(target.getId())).thenReturn(Optional.of(target));
+        when(users.save(target)).thenReturn(target);
 
-        UserResponse response = service.toggleUserStatus(user.getId());
+        service.toggleUserStatus(target.getId());
 
-        assertThat(response.getIsActive()).isFalse();
-        verify(users).save(user);
-        verify(sessions).revokeAllByUserId(user.getId());
-    }
-
-    @Test
-    void reactivatingAccountDoesNotRestoreOldSessions() {
-        user.setIsActive(false);
-
-        UserResponse response = service.toggleUserStatus(user.getId());
-
-        assertThat(response.getIsActive()).isTrue();
-        verify(users).save(user);
-        verifyNoInteractions(sessions);
+        assertThat(target.getIsActive()).isFalse();
+        verify(clientSessionRepository).revokeActiveByUserId(target.getId());
     }
 }
