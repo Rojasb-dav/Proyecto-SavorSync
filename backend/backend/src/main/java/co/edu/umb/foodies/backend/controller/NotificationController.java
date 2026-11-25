@@ -31,7 +31,7 @@ public class NotificationController {
     @PostMapping
     public ResponseEntity<Notification> createNotification(@RequestBody Notification notification) {
         notification.setId(null);
-        return ResponseEntity.ok(notificationRepository.save(notification));
+        return ResponseEntity.status(HttpStatus.CREATED).body(notificationRepository.save(notification));
     }
 
     @PutMapping("/{id}/read")
@@ -50,6 +50,6 @@ public class NotificationController {
                 .filter(n -> owner.equals(n.getClienteId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notificación no encontrada"));
         notificationRepository.delete(notification);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 }

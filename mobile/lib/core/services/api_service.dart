@@ -82,23 +82,15 @@ class ApiService {
   // 1. PUBLICACIONES (POSTS)
   // ===========================================================================
   Future<List<PostModel>> getPosts() async {
-    try {
-      final response = await _dio.get('/posts');
-      final list = response.data as List;
-      return list.map((e) => PostModel.fromJson(Map<String, dynamic>.from(e))).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/posts');
+    final list = response.data as List;
+    return list.map((e) => PostModel.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<List<PostModel>> getUserPosts(String userId) async {
-    try {
-      final response = await _dio.get('/posts/user/$userId');
-      final list = response.data as List;
-      return list.map((e) => PostModel.fromJson(Map<String, dynamic>.from(e))).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/posts/user/$userId');
+    final list = response.data as List;
+    return list.map((e) => PostModel.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<PostModel> createPost(Map<String, dynamic> data) async {
@@ -115,13 +107,9 @@ class ApiService {
   }
 
   Future<List<CommentModel>> getComments(String postId) async {
-    try {
-      final response = await _dio.get('/posts/$postId/comments');
-      final list = response.data as List;
-      return list.map((e) => CommentModel.fromJson(Map<String, dynamic>.from(e))).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/posts/$postId/comments');
+    final list = response.data as List;
+    return list.map((e) => CommentModel.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<void> addComment(String postId, Map<String, dynamic> commentData) async {
@@ -132,13 +120,9 @@ class ApiService {
   // 2. RESTAURANTES & MENÚ
   // ===========================================================================
   Future<List<RestaurantModel>> getRestaurants() async {
-    try {
-      final response = await _dio.get('/restaurants');
-      final list = response.data as List;
-      return list.map((e) => RestaurantModel.fromJson(Map<String, dynamic>.from(e))).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/restaurants');
+    final list = response.data as List;
+    return list.map((e) => RestaurantModel.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<void> createRestaurant(Map<String, dynamic> data) async {
@@ -150,29 +134,21 @@ class ApiService {
   }
 
   Future<List<MenuItemModel>> getMenu(String restaurantId) async {
-    try {
-      final response = await _dio.get('/restaurants/$restaurantId/menu');
-      final list = response.data as List;
-      return list.map((e) => MenuItemModel.fromJson(Map<String, dynamic>.from(e))).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/restaurants/$restaurantId/menu');
+    final list = response.data as List;
+    return list.map((e) => MenuItemModel.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   // ===========================================================================
   // 3. RESERVAS & PQRS
   // ===========================================================================
   Future<List<ReservationModel>> getReservations({String? userId, String? restaurantId}) async {
-    try {
-      final response = await _dio.get('/reservations', queryParameters: {
-        if (userId != null) 'userId': userId,
-        if (restaurantId != null) 'restaurantId': restaurantId,
-      });
-      final list = response.data as List;
-      return list.map((e) => ReservationModel.fromJson(Map<String, dynamic>.from(e))).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/reservations', queryParameters: {
+      if (userId != null) 'userId': userId,
+      if (restaurantId != null) 'restaurantId': restaurantId,
+    });
+    final list = response.data as List;
+    return list.map((e) => ReservationModel.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<ReservationModel> createReservation(Map<String, dynamic> data) async {
@@ -190,12 +166,8 @@ class ApiService {
 
   // PQRS
   Future<List<Map<String, dynamic>>> getPQRS() async {
-    try {
-      final response = await _dio.get('/pqrs');
-      return (response.data as List).map((e) => Map<String, dynamic>.from(e)).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/pqrs');
+    return (response.data as List).map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   Future<void> createPQRS(Map<String, dynamic> data) async {
@@ -208,13 +180,9 @@ class ApiService {
 
   // NOTIFICACIONES
   Future<List<NotificationModel>> getNotifications(String userId) async {
-    try {
-      final response = await _dio.get('/notifications', queryParameters: {'userId': userId});
-      final list = response.data as List;
-      return list.map((e) => NotificationModel.fromJson(Map<String, dynamic>.from(e))).toList();
-    } catch (e) {
-      return [];
-    }
+    final response = await _dio.get('/notifications', queryParameters: {'userId': userId});
+    final list = response.data as List;
+    return list.map((e) => NotificationModel.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 
   Future<void> markNotificationRead(String id) async {

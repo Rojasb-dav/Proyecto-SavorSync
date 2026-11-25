@@ -61,7 +61,7 @@ public class ReservationController {
 
         reservation.setEstado(Reservation.ReservationStatus.pendiente);
         Reservation saved = reservationRepository.save(reservation);
-        return ResponseEntity.ok(convertToDTO(saved));
+        return ResponseEntity.status(HttpStatus.CREATED).body(convertToDTO(saved));
     }
 
     @Transactional

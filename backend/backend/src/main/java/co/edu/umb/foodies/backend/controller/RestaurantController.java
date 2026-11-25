@@ -50,7 +50,7 @@ public class RestaurantController {
         restaurant.setStatus(Restaurant.RestaurantStatus.pendiente);
         restaurant.setRatingAverage(null);
         restaurant.setReviewsCount(null);
-        return ResponseEntity.ok(restaurantRepository.save(restaurant));
+        return ResponseEntity.status(HttpStatus.CREATED).body(restaurantRepository.save(restaurant));
     }
 
     @PutMapping("/{id}/status")
@@ -76,7 +76,7 @@ public class RestaurantController {
             menuItemRepository.findByRestaurantId(id).forEach(menuItemRepository::delete);
             reservationRepository.findByRestaurantId(id).forEach(reservationRepository::delete);
             restaurantRepository.delete(restaurant);
-            return ResponseEntity.ok().build();
+            return ResponseEntity.noContent().build();
         } catch (Exception e) {
             System.err.println("WARN: Error al borrar restaurante: " + e.getMessage());
             return ResponseEntity.status(500).build();
@@ -98,7 +98,7 @@ public class RestaurantController {
         }
         item.setId(null);
         item.setRestaurantId(id);
-        return ResponseEntity.ok(menuItemRepository.save(item));
+        return ResponseEntity.status(HttpStatus.CREATED).body(menuItemRepository.save(item));
     }
 
     private boolean canView(Restaurant restaurant, HttpServletRequest request) {

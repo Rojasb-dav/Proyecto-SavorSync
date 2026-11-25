@@ -46,7 +46,7 @@ public class PqrsController {
                 .descripcion(pqrs.getDescripcion())
                 .estado(Pqrs.PqrsStatus.recibida)
                 .build();
-        return ResponseEntity.ok(pqrsRepository.save(created));
+        return ResponseEntity.status(HttpStatus.CREATED).body(pqrsRepository.save(created));
     }
 
     @Transactional

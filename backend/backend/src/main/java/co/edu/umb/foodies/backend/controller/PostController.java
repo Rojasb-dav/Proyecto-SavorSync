@@ -48,96 +48,86 @@ public class PostController {
 
     @PostMapping
     public ResponseEntity<PostDTO> createPost(@RequestBody PostDTO postDTO, HttpServletRequest request) {
-        return ResponseEntity.ok(postService.createPost(postDTO, request.getUserPrincipal().getName()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(postService.createPost(postDTO, request.getUserPrincipal().getName()));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePost(@PathVariable String id, HttpServletRequest request) {
         String userId = getUserIdFromRequest(request);
         postService.deletePost(id, userId);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{postId}/comments")
     public ResponseEntity<List<CommentDTO>> getComments(@PathVariable String postId, HttpServletRequest request) {
         postService.requireVisiblePost(postId, getUserIdFromRequest(request));
-        try {
-            List<Comment> comments = commentRepository.findByPostId(postId);
-            if (comments == null || comments.isEmpty()) {
-                return ResponseEntity.ok(List.of());
-            }
-            List<CommentDTO> dtos = comments.stream()
-                    .filter(c -> c != null)
-                    .map(c -> {
-                        User author = null;
-                        if (c.getClienteId() != null && !c.getClienteId().isBlank()) {
-                            try {
-                                author = userRepository.findById(c.getClienteId()).orElse(null);
-                            } catch (Exception ignored) {}
-                        }
-                        return CommentDTO.from(c, author);
-                    })
-                    .collect(Collectors.toList());
-            return ResponseEntity.ok(dtos);
-        } catch (Exception e) {
-            System.err.println("ERROR en getComments para postId " + postId + ": " + e.getMessage());
+
+        List<Comment> comments = commentRepository.findByPostId(postId);
+        if (comments == null || comments.isEmpty()) {
             return ResponseEntity.ok(List.of());
         }
+        List<CommentDTO> dtos = comments.stream()
+                .filter(c -> c != null)
+                .map(c -> {
+                    User author = null;
+                    if (c.getClienteId() != null && !c.getClienteId().isBlank()) {
+                        try {
+                            author = userRepository.findById(c.getClienteId()).orElse(null);
+                        } catch (Exception ignored) {}
+                    }
+                    return CommentDTO.from(c, author);
+                })
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping("/{postId}/comments")
     public ResponseEntity<CommentDTO> addComment(@PathVariable String postId, @RequestBody Map<String, Object> body, HttpServletRequest request) {
         String userId = request.getUserPrincipal().getName();
         postService.requireVisiblePost(postId, userId);
-        try {
-            String content = body.get("content") != null ? body.get("content").toString() : "";
-            if (content.isBlank() && body.get("contenido") != null) {
-                content = body.get("contenido").toString();
-            }
 
-            User author = userRepository.findById(userId).orElse(null);
-            if (author == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Usuario autor no encontrado");
-            }
-
-            Comment comment = Comment.builder()
-                    .id(UUID.randomUUID().toString())
-                    .postId(postId)
-                    .clienteId(author.getId())
-                    .content(content)
-                    .status("activo")
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            Comment savedComment = commentRepository.save(comment);
-
-            try {
-                postRepository.findById(postId).ifPresent(post -> {
-                    if (post.getUser() != null && !post.getUser().getId().equals(author.getId())) {
-                        notificationRepository.save(Notification.builder()
-                                .id(UUID.randomUUID().toString())
-                                .clienteId(post.getUser().getId())
-                                .type(Notification.NotificationType.comentario)
-                                .title("Nuevo comentario en tu reseña 💬")
-                                .body("@" + author.getUsername() + " comentó: \"" + savedComment.getContent() + "\"")
-                                .read(false)
-                                .channel(Notification.Channel.in_app)
-                                .createdAt(LocalDateTime.now())
-                                .build());
-                    }
-                });
-            } catch (Exception e) {
-                System.err.println("WARN: Fallo al notificar comentario: " + e.getMessage());
-            }
-
-            return ResponseEntity.ok(CommentDTO.from(savedComment, author));
-        } catch (ResponseStatusException rse) {
-            throw rse;
-        } catch (Exception e) {
-            System.err.println("ERROR al agregar comentario: " + e.getMessage());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error al procesar comentario: " + e.getMessage());
+        String content = body.get("content") != null ? body.get("content").toString() : "";
+        if (content.isBlank() && body.get("contenido") != null) {
+            content = body.get("contenido").toString();
         }
+
+        User author = userRepository.findById(userId).orElse(null);
+        if (author == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Usuario autor no encontrado");
+        }
+
+        Comment comment = Comment.builder()
+                .id(UUID.randomUUID().toString())
+                .postId(postId)
+                .clienteId(author.getId())
+                .content(content)
+                .status("activo")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        Comment savedComment = commentRepository.save(comment);
+
+        try {
+            postRepository.findById(postId).ifPresent(post -> {
+                if (post.getUser() != null && !post.getUser().getId().equals(author.getId())) {
+                    notificationRepository.save(Notification.builder()
+                            .id(UUID.randomUUID().toString())
+                            .clienteId(post.getUser().getId())
+                            .type(Notification.NotificationType.comentario)
+                            .title("Nuevo comentario en tu reseña 💬")
+                            .body("@" + author.getUsername() + " comentó: \"" + savedComment.getContent() + "\"")
+                            .read(false)
+                            .channel(Notification.Channel.in_app)
+                            .createdAt(LocalDateTime.now())
+                            .build());
+                }
+            });
+        } catch (Exception e) {
+            System.err.println("WARN: Fallo al notificar comentario: " + e.getMessage());
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(CommentDTO.from(savedComment, author));
     }
 
     @PostMapping("/{postId}/like")
