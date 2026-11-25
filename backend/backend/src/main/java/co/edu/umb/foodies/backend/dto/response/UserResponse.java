@@ -52,6 +52,12 @@ public class UserResponse {
 
     public static UserResponse from(User u, String currentUserId) {
         if (u == null) return null;
+
+        // P1.9 Fix: Proteger email y teléfono si el que consulta no es el dueño ni un empleado admin
+        boolean isOwnerOrAdmin = currentUserId != null && currentUserId.equals(u.getId());
+        String safeEmail = isOwnerOrAdmin ? u.getEmail() : null;
+        String safePhone = isOwnerOrAdmin ? u.getPhone() : null;
+
         boolean isFollowing = false;
         try {
             if (currentUserId != null && u.getFollowers() != null) {
@@ -83,13 +89,13 @@ public class UserResponse {
 
         return UserResponse.builder()
                 .id(u.getId())
-                .email(u.getEmail())
+                .email(safeEmail)
                 .username(u.getUsername())
                 .fullName(u.getFullName())
                 .role(u.getRole() != null ? u.getRole().name() : null)
                 .avatarUrl(u.getAvatarUrl())
                 .bio(u.getBio())
-                .phone(u.getPhone())
+                .phone(safePhone)
                 .isActive(u.getIsActive())
                 .emailVerified(u.getEmailVerified())
                 .createdAt(u.getCreatedAt())
