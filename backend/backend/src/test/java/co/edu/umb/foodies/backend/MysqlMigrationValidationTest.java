@@ -13,7 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MysqlMigrationValidationTest {
 
-    private static final String FRESH_SCHEMA = "foodies_db_v32_validation4";
+    private static final String FRESH_SCHEMA = "foodies_db_v33_empty_"
+            + java.util.UUID.randomUUID().toString().substring(0, 8);
 
     @Test
     @EnabledIfEnvironmentVariable(named = "SAVORSYNC_RUN_MYSQL_MIGRATION_VALIDATION", matches = "true")

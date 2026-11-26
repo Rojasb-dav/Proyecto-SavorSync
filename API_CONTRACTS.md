@@ -1,5 +1,7 @@
 # Contratos REST de SavorSync
 
+> **Actualización V3.3.** V3.3 añade GET /actuator/health sin autenticación. Retorna 200 con UP o 503 con DOWN sin detalles. Las rutas de OTP conservan HTTP 202 para la solicitud y la emisión de sesión sigue condicionada a confirmar código. Un 202 no confirma entrega al buzón. La solicitud restaurant-admin admite un Foodie verificado que originalmente eligió Foodie. Flutter se compila con API_BASE_URL.
+
 Inventario estático inicial de P0 sobre la rama `fix/savorsync-remediation-v2`, con base `8a9101e2b627e609f359f92189c1cf11f85810c8` y los cambios locales preexistentes. Describe lo declarado en el código al inicio de la auditoría. El inventario por sí solo no acredita conectividad, persistencia ni autorización en ejecución.
 
 **Actualización P0.1.** Google queda temporalmente deshabilitado en la aplicación Flutter y el servicio cliente rechaza la operación. El contrato de OAuth permanece pendiente en P1.10. El resto del inventario documenta el estado inicial.

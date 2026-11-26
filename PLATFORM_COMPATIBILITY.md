@@ -1,5 +1,7 @@
 # Compatibilidad de SavorSync Web y Mobile
 
+> **Actualización V3.3.** V3.3 parametriza API_BASE_URL, permite HTTP loopback solo en compilaciones locales que lo declaran y separa red Android debug de release. Vercel usa Flutter 3.41.9. Web conserva el enrutamiento existente. Revisar [configuración](INFRASTRUCTURE_CONFIGURATION.md) y [evidencias](P0_V33_AUDIT_HANDOFF.md).
+
 Diagnóstico estático de `8a9101e2b627e609f359f92189c1cf11f85810c8` y de los cambios locales presentes al iniciar la remediación. Los resultados de ejecución se registran en [TEST_REPORT.md](TEST_REPORT.md). Las restricciones de acceso por plataforma requieren confirmación con los requisitos aprobados.
 
 **Actualización P0.1.** Flutter Web y Android comparten la contención de Google Sign-In. El botón queda deshabilitado y la llamada falla sin usar una contraseña compartida. Los resultados de pruebas y los límites de la validación figuran en [TEST_REPORT.md](TEST_REPORT.md).

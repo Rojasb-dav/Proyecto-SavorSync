@@ -61,7 +61,21 @@ class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
 
-  static const String baseUrl = 'https://proyecto-savorsync.onrender.com/api/v1';
+  static const String baseUrl = String.fromEnvironment('API_BASE_URL');
+
+  static bool isValidBaseUrl(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null || !uri.hasAuthority || uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment ||
+        uri.path != '/api/v1') {
+      return false;
+    }
+    if (uri.scheme == 'https') return true;
+    return uri.scheme == 'http' &&
+        const bool.fromEnvironment('ALLOW_LOCAL_HTTP') &&
+        (uri.host == 'localhost' || uri.host == '127.0.0.1' ||
+            uri.host == '10.0.2.2' || uri.host == '::1');
+  }
 
   static const _manageSession = 'manageSession';
   static const _requestToken = 'requestToken';

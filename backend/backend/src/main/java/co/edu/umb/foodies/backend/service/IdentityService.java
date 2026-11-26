@@ -35,7 +35,7 @@ public class IdentityService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Verifica tu correo antes de solicitar permisos de restaurante.");
         }
-        requireRequestedRestaurantAdmin(userId);
+        identities.requestRestaurantAdmin(userId);
 
         return pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(
                         userId, RESTAURANT_REQUEST_SUBJECT, OPEN_STATES)

@@ -1,5 +1,7 @@
 # Plan integral de remediación SavorSync V2
 
+> **Actualización V3.3.** V3.3 prepara el corte del esquema parcial, integra proveedores a nivel de código y valida en instalaciones locales. El gate P0 requiere autorización y evidencia de producción del propietario según [el runbook](PRODUCTION_DEPLOYMENT_RUNBOOK.md). Se mantienen las decisiones de P1.
+
 Referencia `3146a0e3b76adadba62193c35af10ba2eff2b023`. La rama de trabajo `fix/savorsync-remediation-v2` parte de `8a9101e2b627e609f359f92189c1cf11f85810c8`. El diagnóstico se registra en [AUDIT_FINDINGS.md](AUDIT_FINDINGS.md).
 
 Estados autorizados: PENDIENTE, EN DESARROLLO, IMPLEMENTADA SIN VERIFICAR, PARCIALMENTE CORREGIDA, VERIFICADA Y APROBADA, BLOQUEADA. «Pendiente» en las tablas indica que esta remediación no implementó la tarea. Toda tarea pendiente tiene cambios, pruebas, resultados y commit asociado por registrar. Las columnas de alcance y dependencias describen el impacto esperado en API Spring, datos MySQL y consumidores Web/Android según la operación. iOS requiere decisión de alcance.

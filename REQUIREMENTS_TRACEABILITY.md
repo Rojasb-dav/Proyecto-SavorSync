@@ -1,5 +1,7 @@
 # Matriz de Trazabilidad Académica
 
+> **Actualización V3.3.** V3.3 cubre RF01 y RF06 con OTP, aprovisionamiento administrativo separado y solicitud de rol, y RNF-SEC con TLS JDBC, permisos de activos y denegación por defecto. La integración externa queda en el runbook y no cambia el estado académico de RF10 ni el alcance P1.14. [Evidencia V3.3](P0_V33_AUDIT_HANDOFF.md)
+
 Basado en el manual técnico RF01-RF11 y UC-01 al UC-14, RNF-PERF a RNF-LEGAL.
 
 | ID | Requerimiento / Subrequisito | Estado Actual | Tarea Plan |

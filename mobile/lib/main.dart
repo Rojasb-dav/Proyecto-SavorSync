@@ -19,6 +19,14 @@ void main() async {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
+  if (!ApiService.isValidBaseUrl(ApiService.baseUrl)) {
+    runApp(const MaterialApp(
+      home: Scaffold(
+        body: Center(child: Text('La configuración de la API no es válida.')),
+      ),
+    ));
+    return;
+  }
   runApp(const SavorSyncApp());
 }
 

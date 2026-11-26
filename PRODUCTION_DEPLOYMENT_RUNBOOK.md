@@ -1,0 +1,16 @@
+# Secuencia de corte P0
+
+Esta secuencia corresponde al propietario. Verificar cada paso en mantenimiento y guardar evidencia sin secretos.
+
+1. Confirmar qué credenciales se consideran comprometidas y rotarlas o preparar sus sustitutas según el riesgo. En caso de exposición activa, revocar inmediatamente. Para una transición previamente autorizada, cambiar nuevas credenciales antes de revocar las claves de reemplazo.
+2. Crear y proteger el respaldo definitivo de Aiven. Comprobar su restauración antes de cualquier sustitución. Limitar los permisos de savorsync_backend a defaultdb para el servicio habitual.
+3. Abrir mantenimiento y congelar escrituras. Ejecutar el [procedimiento de compatibilidad](PRODUCTION_MIGRATION_RUNBOOK.md), incluyendo cotejo de artefactos y rollback restaurable.
+4. Si no existe admin_sistema, iniciar un contenedor interactivo aislado con la imagen y configuración TLS de producción, APP_BOOTSTRAP_ADMIN_ENABLED=true y el argumento --savorsync-bootstrap-admin. Proporcionar el correo, usuario, nombre y contraseña fuerte generada por el propietario por consola. No usar argumentos ni archivos rastreados para esas entradas. El proceso no abre servidor y termina al completar el comando. La cuenta comienza sin verificar. Si hubo un administrador legado, validar su identidad y usar su flujo de correo individual. Retirar la variable de bootstrap al terminar.
+5. Rotar la contraseña de avnadmin en el panel autorizado y conservarla en el gestor. Rotar savorsync_backend y actualizar su secreto antes de reanudar Render. Preparar APP_JWT_SECRET nuevo y aceptar que las sesiones firmadas con el anterior dejan de ser válidas. No mezclar conjuntos de variables entre revisiones.
+6. Asegurar Secret Files, CA y variables de Render. Ajustar contexto Docker y mantener Flyway desactivado. Desplegar el backend manualmente tras aprobación y comprobar /actuator/health.
+7. Desde Spring Boot, probar un correo sintético con Brevo y una imagen sintética con Cloudinary usando la clave restringida. Confirmar OTP, login de administrador, creación de moderador y revocación. Validar aceptación y entrega real por separado. Revocar la clave Root anterior cuando el nuevo backend haya pasado la comprobación.
+8. Medir clientes Android antiguos que todavía dependen de foodies_unsigned. Programar actualización y una fecha de retirada. Mantener restricciones durante la transición y apagar el preset tras la validación autorizada. Registrar el impacto de sus versiones.
+9. Compilar Web con el API_BASE_URL correcto. Revisar la Preview en navegador, arranque, recursos estáticos, CORS, verificación, sesiones y roles. Promover manualmente a Vercel y repetir pruebas de integración. Un APK release requiere la configuración de firma real del propietario.
+10. Si el backend no arranca o hay errores de datos, mantener mantenimiento. Revertir app y base como unidad según el runbook. Confirmar permisos, CA, secretos y contratos compatibles, revisar las escrituras posteriores al corte y volver a comprobar health antes de reabrir.
+
+La preparación previa reportada por el propietario incluye VERIFY_IDENTITY en cliente MySQL, Secret File de Render, aceptación y entrega Brevo, y carga y borrado sintéticos de Cloudinary. Los pasos de corte y la validación desde Spring Boot quedan por ejecutar. Firebase permanece en P1.14.

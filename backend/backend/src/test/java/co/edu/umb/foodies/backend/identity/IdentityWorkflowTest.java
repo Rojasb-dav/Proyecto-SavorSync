@@ -29,7 +29,6 @@ class IdentityWorkflowTest {
         PqrsRepository pqrs = mock(PqrsRepository.class);
         ClientSessionRepository sessions = mock(ClientSessionRepository.class);
         AccountIdentityRegistry identities = mock(AccountIdentityRegistry.class);
-        when(identities.requestedRole("client", user.getId())).thenReturn("restaurant_admin");
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
         when(pqrs.findFirstByClienteIdAndAsuntoAndEstadoIn(
                 eq(user.getId()), eq(IdentityService.RESTAURANT_REQUEST_SUBJECT), any()))

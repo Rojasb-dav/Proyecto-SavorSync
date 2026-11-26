@@ -1,5 +1,7 @@
 # Matriz de autorización V3.2
 
+> **Actualización V3.3.** V3.3 agrega GET /actuator/health público con HTTP 200 y cuerpo {status: UP} o HTTP 503 y {status: DOWN}. Un Foodie activo y verificado puede solicitar administración desde su perfil aunque se haya registrado como Foodie. La petición actualiza el rol solicitado y reutiliza la solicitud pendiente. Moderador recibe 403 al aprobar. Solo admin_sistema puede aprobar y el cambio revoca las sesiones del cliente.
+
 Fecha: 2026-11-25. Describe el código local de fix/savorsync-remediation-v3 y el contrato observado en controladores, SecurityConfig y servicios. No acredita permisos configurados en producción.
 
 ## Roles y respuestas

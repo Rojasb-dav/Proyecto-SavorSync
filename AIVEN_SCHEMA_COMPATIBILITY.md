@@ -1,0 +1,28 @@
+# Compatibilidad del esquema parcial de Aiven
+
+Se inspeccionó el archivo estructural autorizado. Contiene doce CREATE TABLE de InnoDB y ningún INSERT, REPLACE, UPDATE, DELETE ni LOAD DATA. La cabecera declara MySQL 8.4.11 y defaultdb. No se inspeccionó el respaldo con datos ni se abrió una conexión a Aiven. La comparación se hizo con el DDL académico, Flyway V1–V5, los tipos JPA ajustados en V3.2 y los repositorios y consultas de identidad, recuperación y recursos.
+
+| Origen | Diferencia y tratamiento |
+|---|---|
+| clientes | ID VARCHAR(36) frente a CHAR(36). Estados BIT frente a BOOLEAN y DATETIME(6) frente a TIMESTAMP. Se preservan ID, hash, contacto y rol de clientes. Los roles internos van a empleados con el mismo ID y verificación individual pendiente. El índice central comprueba correo y usuario normalizados y colisiones entre tipos. |
+| comentarios | Contenido de 2000 frente a 200 caracteres. El lote rechaza incompatibles. Se copian ID, autor y publicación con FK activas y después se enlaza parent_id. Estado nulo queda oculto. |
+| likes | PK compuesta sin ID ni fecha. Se preserva el par, se asigna UUID y la fecha desconocida queda nula. El destino mantiene unicidad del par y FK. |
+| menu_restaurantes | Se copia por ID al singular menu_restaurante y se conservan propietario indirecto, orden, decimal y disponibilidad. El destino exige FK a restaurante. |
+| notificaciones_cliente | Los enums comment, follow y reservation pasan a comentario, seguidor y reserva. Like se conserva. Para menu o system, el lote se detiene. Canal nulo se interpreta como in_app. |
+| pqrs | El destino incorpora FK a cliente y, si hay responsable, a empleado. Los enums tienen los mismos valores, aunque difieren de orden. Se preservan fechas de gestión, texto y referencias válidas. |
+| publicaciones | Calificación DOUBLE frente a TINYINT de 1 a 5. Se rechazan fracciones o fuera de rango. Nombre y dirección históricos son texto, sin FK. Se enlaza un restaurante solo cuando nombre y dirección coinciden exactamente con un único ID. Se conserva la URL histórica en imagenes_publicacion. Una publicación con visibilidad nula queda privada. |
+| reservas | El número de personas INT debe entrar en el TINYINT positivo. Se conservan ID, cliente, restaurante, fecha, hora, notas y estado. Las FK detectan referencias huérfanas. |
+| restaurantes | owner_id, direccion, ciudad y categoria pueden ser nulos en el origen y se exigen en destino. El lote se detiene ante esos casos. Rango de precio debe estar entre 1 y 4. Estado nulo queda pendiente y no se infiere un aprobador. |
+| seguidores | PK compuesta y dos FK. Se preserva el par con un UUID en destino y fecha inicial desconocida nula. |
+| sesiones_cliente | Origen sin unicidad del token y sin todas las FK. Se conserva el ID, pero se invalida el material de sesión y se ubica la fila en cliente o empleado. Un titular ausente detiene el lote. |
+| tokens_recuperacion | Origen con email de 255 y código de seis caracteres. Se valida longitud, se preserva ID y caducidad y se sustituye el código por un marcador consumido. Flyway crea una sola tabla de destino. |
+
+Faltan empleados, cliente_restaurante_favorito, imagenes_publicacion, imagenes_restaurante, horarios_restaurante, promociones_restaurante, reportes_contenido, acciones_moderacion, notificaciones_empleado, analiticas_restaurante y sesiones_empleado. La tabla singular de menú también está ausente como nombre, aunque hay datos en su equivalente plural. Faltan account_identity_registry, auth_rate_limits, cloudinary_assets y flyway_schema_history. El origen no declara triggers. V1 y V2 crean 23 triggers que asignan IDs cuando corresponde. Se mantienen los índices y constraints del destino en lugar de copiar los nombres de índice generados por Hibernate en el origen.
+
+Las 22 definiciones de tabla y 22 triggers de schema_foodies_db.sql coinciden con V1 desde el primer CREATE TABLE. El origen usa utf8mb4_0900_ai_ci. La base de preparación usa utf8mb4_unicode_ci explícito. Los IDs vacíos o con espacios exteriores se rechazan antes de pasar a CHAR(36). Todas las PK, FK, checks y restricciones únicas del destino se aplican durante la copia. Las FK de negocio hacia un antiguo administrador de clientes pueden requerir una decisión sobre su dueño legítimo antes de copiar. Cada columna temporal conserva su instante a la precisión de la columna de destino bajo UTC, salvo tiempos previos a TIMESTAMP que se rechazan. El respaldo cifrado retiene íntegros el texto de restaurante sin correspondencia, la precisión anterior, las filas originales y los atributos históricos que no tienen campo equivalente. Cualquier pérdida de precisión debe revisarse durante el cotejo previo al corte.
+
+## Estrategia
+
+Inicializar una base nueva con V1–V5 y comprobar el historial. Restaurar el origen como copia de solo lectura lógica en un esquema separado. Ejecutar [copy-partial-schema.sql](backend/backend/ops/copy-partial-schema.sql) en una sola conexión de cliente por lotes. La copia usa una transacción, modo SQL estricto y restricciones activas. No usa baselines sobre el esquema parcial, IGNORE, upserts ni deshabilita FK. El usuario de copia debe tener los permisos de lectura y escritura en los esquemas correspondientes y CREATE TEMPORARY TABLES. Los conflictos deben resolverse en la copia a través de decisiones auditadas. La versión de prueba 8.4.13 difiere de 8.4.11 de Aiven.
+
+La operación de corte sobre defaultdb requiere aprobación independiente y el respaldo verificado del propietario. El procedimiento está en [PRODUCTION_MIGRATION_RUNBOOK.md](PRODUCTION_MIGRATION_RUNBOOK.md).

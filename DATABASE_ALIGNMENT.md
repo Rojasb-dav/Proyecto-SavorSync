@@ -1,5 +1,7 @@
 # Alineación entre Java y MySQL
 
+> **Actualización V3.3.** El esquema parcial de Aiven contiene 12 tablas, incluido menu_restaurantes y recuperación de una versión anterior. No cumple el baseline académico. La tabla por tabla, transformaciones y procedimiento de copia se documentan en [compatibilidad](AIVEN_SCHEMA_COMPATIBILITY.md). Hibernate sigue en validate.
+
 > **Actualización V3.2.** MySQL 8.0 local validó la instalación desde cero y el baseline legado. Se conservaron las 22 tablas originales. Hibernate arrancó con `ddl-auto=validate` tras alinear `CHAR(36)`, `ENUM`, `TINYINT` y longitud de comentarios con el DDL. Los resultados y el tratamiento de colisiones y de V5 se documentan en [MYSQL_MIGRATION_VALIDATION.md](MYSQL_MIGRATION_VALIDATION.md). El resto de este archivo conserva los antecedentes.
 
 **P0.5 · PENDIENTE.** Revisión estática del esquema y del código local sobre la base `8a9101e2b627e609f359f92189c1cf11f85810c8`, con los cambios locales visibles en Android Studio. Se conservaron las tablas, relaciones y registros. La validación con MySQL y el cotejo con Aiven están pendientes.

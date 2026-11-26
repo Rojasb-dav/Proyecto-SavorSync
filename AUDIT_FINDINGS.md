@@ -1,5 +1,7 @@
 # Diagnóstico inicial de SavorSync V2
 
+> **Actualización V3.3.** V3.3 separa nueve hallazgos sobre esquema parcial, correo HTTPS, multimedia, primera cuenta, TLS, Docker, Web/Vercel, autorización y validación. Los estados con evidencia y pendientes del propietario se registran por ID en [la entrega V3.3](P0_V33_AUDIT_HANDOFF.md).
+
 ## Estado de partida
 
 - Rama inicial `main`, con referencia local `origin/main` al mismo commit. HEAD `8a9101e2b627e609f359f92189c1cf11f85810c8`. Único commit posterior a `3146a0e3b76adadba62193c35af10ba2eff2b023`: `8a9101e`, solo README. El árbol local de Git es la fuente de esta comparación.

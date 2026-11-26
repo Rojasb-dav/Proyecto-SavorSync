@@ -75,6 +75,15 @@ public class AccountIdentityRegistry {
                 """, String.class, identityType, identityId);
     }
 
+    @Transactional
+    public void requestRestaurantAdmin(String identityId) {
+        lockForChallenge("client", identityId);
+        jdbc.update("""
+                UPDATE account_identity_registry SET requested_role = 'restaurant_admin'
+                WHERE identity_type = 'client' AND identity_id = ?
+                """, identityId);
+    }
+
     @Transactional(readOnly = true)
     public String requestedRole(String identityType, String identityId) {
         List<String> roles = jdbc.query("""

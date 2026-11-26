@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 @Component
-@Profile("development & !production")
+@Profile("development & !production & !bootstrap-admin")
 @ConditionalOnProperty(
         name = "app.seed.moderator-enabled",
         havingValue = "true",

@@ -94,6 +94,19 @@ class FileUploadP08Test {
         verifyNoInteractions(cloudinary, registry);
     }
 
+    @Test
+    void deletesNewUploadIfRegistryPersistenceFails() throws IOException {
+        var uploaded = new CloudinaryService.UploadResult("https://cdn.example.test/meal.png", "test-id", "png");
+        when(cloudinary.uploadFile(any(byte[].class), eq("png"))).thenReturn(uploaded);
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("synthetic failure"))
+                .when(registry).recordUpload("client", "client-id", uploaded);
+        var file = new MockMultipartFile("file", "meal.png", "image/png", pngImage());
+
+        assertThatThrownBy(() -> controller.uploadFile(file, authenticatedClientRequest()))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("503");
+        verify(cloudinary).deleteUploadedAsset("test-id");
+    }
+
     private void assertBadRequest(MockMultipartFile file, MockHttpServletRequest request) {
         assertThatThrownBy(() -> controller.uploadFile(file, request))
                 .isInstanceOf(ResponseStatusException.class)

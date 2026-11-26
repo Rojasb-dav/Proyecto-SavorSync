@@ -1,10 +1,17 @@
-FROM eclipse-temurin:17-jdk-alpine AS build
-WORKDIR /app
-COPY . .
-RUN ./gradlew build -x test --no-daemon
+FROM eclipse-temurin:17-jdk-jammy@sha256:96ac8197b2cbc2bb0f9fbcbf91dbb0015f43b3c76a1cb351892da12e7bb91bed AS build
+WORKDIR /build
+COPY gradlew build.gradle settings.gradle ./
+COPY gradle/wrapper/ gradle/wrapper/
+COPY src/main/ src/main/
+RUN sed -i 's/\r$//' gradlew && chmod 0755 gradlew \
+    && ./gradlew bootJar --no-daemon --max-workers=2
 
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre-jammy@sha256:c6a5dd70fb24f4e07ef88cbda8efb613a5a649a1af071a41de8eaabd1ee6b5da
 WORKDIR /app
-COPY --from=build /app/build/libs/*.jar app.jar
+COPY --from=build /build/build/libs/backend.jar /app/backend.jar
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod 0555 /app/docker-entrypoint.sh
+USER 10001:10001
+ENV PORT=8080
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

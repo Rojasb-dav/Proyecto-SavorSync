@@ -1,5 +1,7 @@
 # Inventario de Funcionalidades y Feature Flags (PRE-01)
 
+> **Actualización V3.3.** V3.3 añade correo Brevo de producción, alta administrativa por consola y health de dependencias críticas. Cloudinary usa carpeta firmada del backend. El perfil Foodie admite solicitar administración. Firebase y las correcciones funcionales del mapa permanecen pendientes.
+
 | Funcionalidad | RF / UC | Estado | Clasificación | Dependencia | Pruebas |
 |---|---|---|---|---|---|
 | Autenticación JWT | RF11 | Parcial | REQUIRED | P0.2 | Fallando por cambio DDL |

@@ -1,5 +1,7 @@
 # Decisiones de Alcance (PRE-01)
 
+> **Actualización V3.3.** V3.3 conserva flutter_map, OpenStreetMap, geolocator, latlong2, navegación externa por Google Maps y restaurantes obtenidos de Spring Boot y MySQL. Es la sustitución tecnológica propuesta, pendiente de validación académica de RF10. Las mejoras del mapa y Firebase permanecen en P1 y P1.14 respectivamente.
+
 | Decisión | Descripción | Resolución Propuesta |
 |---|---|---|
 | D01 | Nombre Foodies vs SavorSync | Conservar ambos como alias documental. |

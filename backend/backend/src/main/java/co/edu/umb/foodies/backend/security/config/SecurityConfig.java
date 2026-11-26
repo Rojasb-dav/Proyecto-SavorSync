@@ -23,6 +23,8 @@ import java.util.Arrays;
 import java.util.List;
 
 @Configuration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication(type =
+        org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -34,11 +36,6 @@ public class SecurityConfig {
         var registration = new FilterRegistrationBean<>(jwtAuthenticationFilter);
         registration.setEnabled(false);
         return registration;
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 
     @Bean
@@ -70,6 +67,7 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.POST,
                         "/api/v1/auth/register",
                         "/api/v1/auth/login",

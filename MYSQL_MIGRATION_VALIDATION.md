@@ -1,5 +1,7 @@
 # Validación de migraciones MySQL — V3.2
 
+> **Actualización V3.3.** V3.3 usa una copia estructural sintética en MySQL 8.4.13 y una base de destino nueva con V1–V5. Se conserva la evidencia V3.2 de 8.0 y del baseline de 22 tablas. La ruta parcial, su tratamiento de datos y el riesgo de DDL gestionado se detallan en [compatibilidad](AIVEN_SCHEMA_COMPATIBILITY.md) y [migración](PRODUCTION_MIGRATION_RUNBOOK.md).
+
 Fecha: 2026-11-25. Entorno exclusivamente local de prueba en 127.0.0.1:3307. Ninguna conexión a Aiven ni otro servicio remoto.
 
 ## Base nueva
