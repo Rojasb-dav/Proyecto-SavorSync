@@ -1,8 +1,6 @@
-# Matriz de autorización V3.2
+# Matriz de autorización
 
-> **Actualización V3.3.** V3.3 agrega GET /actuator/health público con HTTP 200 y cuerpo {status: UP} o HTTP 503 y {status: DOWN}. Un Foodie activo y verificado puede solicitar administración desde su perfil aunque se haya registrado como Foodie. La petición actualiza el rol solicitado y reutiliza la solicitud pendiente. Moderador recibe 403 al aprobar. Solo admin_sistema puede aprobar y el cambio revoca las sesiones del cliente.
-
-Fecha: 2026-11-25. Describe el código local de fix/savorsync-remediation-v3 y el contrato observado en controladores, SecurityConfig y servicios. No acredita permisos configurados en producción.
+Describe los permisos del código V3.3 y su cobertura local. Las rutas sin autorización explícita se deniegan por defecto. Para los cuerpos HTTP, consultar los [contratos REST](API_CONTRACTS.md).
 
 ## Roles y respuestas
 
@@ -18,6 +16,7 @@ Fecha: 2026-11-25. Describe el código local de fix/savorsync-remediation-v3 y e
 
 | Método y ruta | Visitante | No verificado | Foodie | Restaurant admin | Moderador | Admin sistema | Titularidad/estado y denegación | Respuesta autorizada | Pruebas |
 |---|---|---|---|---|---|---|---|---|---|
+| GET /actuator/health | Permitir | Permitir | Permitir | Permitir | Permitir | Permitir | Comprueba la base sin exponer detalles. | 200 UP o 503 DOWN | HealthControllerTest y arranque Docker local |
 | POST /api/v1/auth/register | Permitir | Permitir | Permitir | Permitir | Permitir | Permitir | DTO acepta foodie o restaurant_admin; HTTP 202 sin JWT. Duplicados 409. | 202 | SessionMySqlTest, pruebas de identidad |
 | POST /api/v1/auth/login | Permitir | Permitir | Permitir | Permitir | Permitir | Permitir | Sólo cuenta activa y correo verificado obtiene sesión; inválido 401/403. | 200 | SessionMySqlTest, AuthServiceSessionTest |
 | POST /api/v1/auth/email/verification | Permitir | Permitir | Permitir | Permitir | Permitir | Permitir | HTTP 202. Requiere contraseña válida o desafío vigente de la identidad para renovar. Solicitudes sin prueba reciben cuerpo genérico. | 202 | SessionMySqlTest, EmailVerificationServiceTest |
@@ -46,7 +45,7 @@ Fecha: 2026-11-25. Describe el código local de fix/savorsync-remediation-v3 y e
 | GET /api/v1/pqrs | 401 | 403 | Propias | 403 | Permitir | Permitir | Foodie ve las propias; Moderador/Admin gestiona; userId ajeno se restringe en servicio. | 200 | AuthorizationMvcTest |
 | POST /api/v1/pqrs | 401 | 403 | Permitir | 403 | 403 | 403 | Autor desde sesión Foodie. | 201 | AuthorizationMvcTest |
 | PUT /api/v1/pqrs/{id} | 401 | 403 | 403 | 403 | Permitir | Permitir | Moderador/Admin cambia estado y respuesta. Las solicitudes de restaurante se reservan al Admin sistema. | 200 | AuthorizationMvcTest |
-| POST /api/v1/auth/restaurant-admin/request | 401 | 403 | Permitir | 403 | 403 | 403 | Solicitud asociada al Foodie; no eleva rol. | 202 | SessionMySqlTest |
+| POST /api/v1/auth/restaurant-admin/request | 401 | 403 | Permitir | 403 | 403 | 403 | Foodie activo y verificado, cualquiera que haya sido su tipo de registro. Reutiliza la solicitud pendiente y conserva el rol efectivo. | 202 | SessionMySqlTest, IdentityWorkflowTest, MysqlPartialSchemaV33Test |
 | POST /api/v1/auth/restaurant-admin/requests/{id}/approve | 401 | 403 | 403 | 403 | 403 | Permitir | Sólo Admin sistema; cambio de rol revoca sesiones anteriores. | 200 | SessionMySqlTest |
 | POST /api/v1/auth/moderators | 401 | 403 | 403 | 403 | 403 | Permitir | Creación interna; correo aún debe verificarse. | 201 | SessionMySqlTest |
 | POST /api/v1/files/upload | 401 | 403 | Permitir | Permitir | 403 | 403 | JPEG/PNG validado en servidor; límites de bytes/píxeles; asociación al propietario. | 201 | FileUploadP08Test, SessionMySqlTest |
