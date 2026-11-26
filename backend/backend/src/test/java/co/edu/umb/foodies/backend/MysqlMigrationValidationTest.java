@@ -3,13 +3,18 @@ package co.edu.umb.foodies.backend;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.SQLException;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MysqlMigrationValidationTest {
 
@@ -185,6 +190,89 @@ class MysqlMigrationValidationTest {
                 assertThat(history.getInt(1)).isEqualTo(6);
                 assertThat(history.getInt(2)).isEqualTo(6);
             }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {3307, 3308})
+    @EnabledIfEnvironmentVariable(named = "SAVORSYNC_V35B_DML_TEST", matches = "true")
+    void enforcesMigratedConstraintsForDmlOnlyAccounts(int port) throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String schema = "v35b_integrity_" + suffix;
+        String user = "v35b_dml_" + suffix;
+        String password = required("SAVORSYNC_SESSION_MYSQL_PASSWORD");
+        String rootPassword = required("SAVORSYNC_SESSION_MYSQL_ROOT_PASSWORD");
+        String server = "jdbc:mysql://127.0.0.1:" + port + "/";
+        String options = "?sslMode=DISABLED&allowPublicKeyRetrieval=true";
+        String url = server + schema + options;
+
+        try (Connection root = DriverManager.getConnection(server + "mysql" + options, "root", rootPassword);
+             Statement sql = root.createStatement()) {
+            assertThat(value(sql, "SELECT VERSION()")).startsWith(port == 3307 ? "8.0." : "8.4.");
+            sql.execute("CREATE DATABASE " + schema + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            sql.execute("CREATE USER '" + user + "'@'%' IDENTIFIED BY '" + escapeSqlLiteral(password) + "'");
+            sql.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON " + schema + ".* TO '" + user + "'@'%'");
+        }
+        Flyway flyway = Flyway.configure().dataSource(url, "root", rootPassword)
+                .locations("classpath:db/migration").load();
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(6);
+        flyway.validate();
+        assertThat(flyway.info().pending()).isEmpty();
+
+        try (Connection dml = DriverManager.getConnection(url, user, password);
+             Statement sql = dml.createStatement()) {
+            assertThat(value(sql, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()"))
+                    .isEqualTo("27");
+            assertThat(value(sql, """
+                    SELECT COUNT(*) FROM information_schema.referential_constraints WHERE constraint_schema=DATABASE()
+                    """)).isEqualTo("35");
+            assertThatThrownBy(() -> sql.execute("CREATE TABLE forbidden_ddl (id INT)"))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("denied");
+            dml.setAutoCommit(false);
+            try {
+                sql.executeUpdate("""
+                        INSERT INTO clientes (email, username, password, full_name, rol) VALUES
+                        ('owner@example.test', 'owner', 'fixture-only', 'Owner', 'restaurant_admin'),
+                        ('foodie@example.test', 'foodie', 'fixture-only', 'Foodie', 'foodie')
+                        """);
+                String owner = value(sql, "SELECT id FROM clientes WHERE username='owner'");
+                String foodie = value(sql, "SELECT id FROM clientes WHERE username='foodie'");
+                assertThat(UUID.fromString(owner).toString()).isEqualTo(owner);
+                assertThat(UUID.fromString(foodie).toString()).isEqualTo(foodie);
+
+                String restaurant = "INSERT INTO restaurantes (owner_id,nombre,direccion,ciudad,categoria)"
+                        + " VALUES ('%s','Fixture','Fixture','Fixture','Fixture')";
+                sql.executeUpdate(restaurant.formatted(owner));
+                String restaurantId = value(sql, "SELECT id FROM restaurantes WHERE owner_id='" + owner + "'");
+                assertThat(UUID.fromString(restaurantId).toString()).isEqualTo(restaurantId);
+                assertThatThrownBy(() -> sql.executeUpdate(restaurant.formatted(foodie)))
+                        .isInstanceOf(SQLException.class).hasMessageContaining("Restaurant owner");
+                String follow = "INSERT INTO seguidores (seguidor_id,seguido_id) VALUES ('%s','%s')";
+                sql.executeUpdate(follow.formatted(foodie, owner));
+                String followId = value(sql, "SELECT id FROM seguidores");
+                assertThat(UUID.fromString(followId).toString()).isEqualTo(followId);
+                assertThatThrownBy(() -> sql.executeUpdate(follow.formatted(foodie, foodie)))
+                        .isInstanceOf(SQLException.class).hasMessageContaining("ck_follow_distinct_accounts");
+                assertThatThrownBy(() -> sql.executeUpdate(follow.formatted(foodie, UUID.randomUUID())))
+                        .isInstanceOf(SQLException.class).hasMessageContaining("foreign key constraint");
+            } finally {
+                dml.rollback();
+            }
+            for (String table : new String[]{"clientes", "restaurantes", "seguidores"}) {
+                assertThat(value(sql, "SELECT COUNT(*) FROM " + table)).isEqualTo("0");
+            }
+        }
+        try (Connection root = DriverManager.getConnection(url, "root", rootPassword);
+             Statement sql = root.createStatement()) {
+            assertThat(value(sql, "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema=DATABASE()"))
+                    .isEqualTo("31");
+        }
+    }
+
+    private static String value(Statement sql, String query) throws SQLException {
+        try (ResultSet result = sql.executeQuery(query)) {
+            assertThat(result.next()).isTrue();
+            return result.getString(1);
         }
     }
 

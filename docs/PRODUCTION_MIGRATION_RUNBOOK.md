@@ -9,6 +9,16 @@ V3.5-A fija `savorsync_v34_validation` como esquema de producción. `defaultdb` 
 1. Antes del corte autorizado, comprobar el respaldo protegido y confirmar que el esquema definitivo conserva el historial Flyway, los checksums de V1–V6 y cotejar los grants existentes antes de proponer cambios. Conservar el usuario de migración como definidor. Las migraciones existentes se mantienen intactas. Ejecutar la migración con una herramienta o proceso separado de la imagen en modo producción, con la identidad de migración y TLS. El entrypoint rechaza intentos de activar Flyway en el servicio productivo. Si se necesita reproducir la instalación en otro entorno, preparar allí un esquema vacío con `utf8mb4` y `utf8mb4_unicode_ci`, y aplicar V1–V6 con la cuenta de migración y CA validada.
 2. Arrancar la imagen aprobada con el usuario habitual, TLS y `ddl-auto=validate`. Mantener Flyway desactivado en el arranque. Confirmar las comprobaciones HTTP de [despliegue](PRODUCTION_DEPLOYMENT_RUNBOOK.md) y, con autorización, aprovisionar el primer administrador por el flujo oficial.
 
+### Flyway 11.15.0 en V3.5-B
+
+Usar `flyway-core` y `flyway-mysql` en la misma versión. El artefacto V3.5-B resuelve ambos en 11.15.0 y conserva Connector/J 8.3.0. En un esquema actualizado hasta V6, el proceso separado de migración debe validar los seis registros existentes y reportar cero pendientes. Comparar el historial completo con la captura previa, incluidos checksums, orden, usuario, fecha y estado. Si la comparación falla o aparece una migración pendiente, suspender el corte e investigar antes de permitir escrituras. Consultar los valores esperados en el [historial de versiones](../VERSIONES_DEL_PROYECTO.md#2026-11-26--v35-b--compatibilidad-de-flyway).
+
+No ejecutar `repair`, `baseline` ni `clean` sobre Aiven, `defaultdb`, `savorsync_v34_validation` o una base real o preexistente. La autorización excepcional de `baseline` se limita a las dos pruebas existentes de `MysqlLegacyBaselineValidationTest` y sus esquemas sintéticos nuevos, desechables y aislados.
+
+### Reversión de la aplicación
+
+Si se revierte V3.5-B, recuperar la imagen aprobada de V3.5-A.1. Mantener el esquema definitivo, el usuario DML, la CA, `VERIFY_IDENTITY`, `ddl-auto=validate` y Flyway desactivado. Comprobar la salud y las rutas HTTP del [runbook de despliegue](PRODUCTION_DEPLOYMENT_RUNBOOK.md). V3.5-B carece de migraciones nuevas, por lo que la reversión del artefacto conserva los datos y el historial V1–V6.
+
 ## Recuperación del esquema definitivo
 
 Congelar escrituras y conservar una captura del estado actual. Restaurar y verificar primero en un entorno aislado. Comprobar los checksums V1–V6, los conteos, las claves y los triggers. Comprobar que `savorsync_v34_migration@%` exista con los permisos requeridos y siga siendo el definidor de los 31 triggers. Después, validar el arranque de una imagen compatible. Reconciliar las escrituras posteriores a la copia antes de autorizar la reapertura. Si la recuperación requiere otra instancia, preparar en ella el mismo nombre de esquema y verificar el nuevo DNS, la CA y las credenciales antes de cambiar la URL. Mantener `defaultdb` y su respaldo bajo custodia histórica.

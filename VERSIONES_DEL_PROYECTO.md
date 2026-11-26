@@ -2,6 +2,47 @@
 
 Registro de cambios, decisiones y resultados de verificación de SavorSync. El [README](README.md) describe el estado vigente. Las cifras siguientes provienen de los informes de cada iteración.
 
+## 2026-11-26 · V3.5-B · Compatibilidad de Flyway
+
+Base aprobada [`daafc4f`](https://github.com/Rojasb-dav/Proyecto-SavorSync/commit/daafc4fbd6ec0b5c01b004b1f33757274d48d185). `dependencyInsight` confirmó que el BOM de Spring Boot 3.3.4 resolvía Flyway Core y MySQL en 10.10.0. Flyway 10.10.0 completó V1–V6 sobre MySQL 8.4.13 y emitió `Flyway upgrade recommended` porque su módulo MySQL declaraba 8.1 como versión máxima probada.
+
+| Componente | Antes | V3.5-B |
+|---|---|---|
+| Flyway Core y Flyway MySQL | 10.10.0 | 11.15.0 en ambos módulos por `flyway.version` |
+| MySQL Connector/J | 8.3.0 | 8.3.0 |
+| Spring Boot | 3.3.4 | 3.3.4 |
+| Hibernate ORM | 6.5.3.Final | 6.5.3.Final |
+| HikariCP | 5.1.0 | 5.1.0 |
+| Gradle / Java | 9.4.1 / toolchain 17 | 9.4.1 / toolchain 17 |
+
+Los módulos de Flyway 10.22.0 y 11.14.1 todavía emiten el aviso después de MySQL 8.1. En la primera versión estable identificada que amplía ese límite, 11.15.0, el código del módulo cubre hasta 9.4 y el proyecto compila para Java 17. La referencia de Redgate lista 8.0 y 9.4 como versiones verificadas. La cobertura de 8.4 se comprobó con el código de la versión y los ensayos locales. Connector/J 8.3.0 documenta soporte para servidores MySQL desde 8.0. Spring Boot permite ajustar la propiedad del BOM. La combinación con Boot 3.3.4 se verificó en este proyecto y conserva la resolución única de Jackson Databind 2.17.2. [Flyway 10.22.0](https://raw.githubusercontent.com/flyway/flyway/flyway-10.22.0/flyway-database/flyway-mysql/src/main/java/org/flywaydb/database/mysql/MySQLDatabase.java#L243) · [Flyway 11.14.1](https://raw.githubusercontent.com/flyway/flyway/flyway-11.14.1/flyway-database/flyway-mysql/src/main/java/org/flywaydb/database/mysql/MySQLDatabase.java#L243) · [Flyway 11.15.0](https://raw.githubusercontent.com/flyway/flyway/flyway-11.15.0/flyway-database/flyway-mysql/src/main/java/org/flywaydb/database/mysql/MySQLDatabase.java#L243) · [Java 17](https://raw.githubusercontent.com/flyway/flyway/flyway-11.15.0/pom.xml#L732) · [Notas de Flyway](https://documentation.red-gate.com/flyway/release-notes-and-older-versions/release-notes-for-flyway-engine) · [Módulo MySQL](https://documentation.red-gate.com/flyway/reference/database-driver-reference/mysql) · [Connector/J 8.3.0](https://dev.mysql.com/doc/relnotes/connector-j/en/news-8-3-0.html) · [Gestión de dependencias de Spring Boot](https://docs.spring.io/spring-boot/3.3/gradle-plugin/managing-dependencies.html)
+
+### Integridad de V1–V6
+
+| Migración | SHA-256 del SQL antes y después | Checksum Flyway 10.10.0 y 11.15.0 |
+|---|---|---:|
+| V1 | `12649C6F8F8072540143C58CAA15E42CACEBA24D738E5B34E23B7307CE52536F` | `649273393` |
+| V2 | `7B5C64923531E08D066ACC8C3AF4E70941E951E1531F2FB027C23C1EB977A959` | `510023184` |
+| V3 | `D61FED3B58B60555B12ED453A5AB5B01B23AC73944F58AC1ADDD3E31B938B1E8` | `-1557068391` |
+| V4 | `17C2B49A4A31458F5839316D4E4417FB87FE4198EE556FFD118AE6E0036437E5` | `534775200` |
+| V5 | `8C355422A741923B40B246199E6DEDE35EE3A14DA670F80879FB25C91A95B298` | `-1040495304` |
+| V6 | `1D10B166430976AC804EA5926BE01F34AD3428D1CFEDF3AC0D35DE906B4FF852` | `-146368849` |
+
+### Verificación local
+
+| Escenario | Resultado |
+|---|---|
+| A · MySQL 8.0.46 desde cero | V1–V6 aplicadas y validadas. Hibernate `validate` correcto. 27 tablas, 35 claves foráneas, 31 triggers, seis migraciones exitosas y cero filas en las 26 tablas funcionales. |
+| B · MySQL 8.4.13 desde cero | Mismos conteos y validación de Hibernate. El registro conserva la línea de detección de MySQL 8.4 y ya no contiene el aviso `Flyway upgrade recommended`. |
+| C · Historial creado por 10.10.0 en MySQL 8.4.13 | Flyway 11.15.0 validó seis migraciones, con cero pendientes y cero repetidas. Coincidieron las seis filas completas del historial y la huella de una fila sintética. Tampoco apareció el aviso en esta ejecución. |
+| D · Integridad con usuario DML en ambos motores | Los triggers generaron UUID. Se aceptaron el propietario con rol correcto y el seguimiento válido. Se rechazaron DDL, rol incorrecto, autoseguimiento y referencia huérfana. El rollback dejó sin filas las tres tablas de prueba. |
+| Backend y entrypoint Linux | `gradlew.bat build --rerun-tasks` generó `backend.jar`. 107 pruebas Java en 18 XML JUnit, incluidas 22 del guard y dos de baseline, con 0 fallidas, 0 errores y 0 omitidas. Docker construyó `savorsync-backend:v35b-local`. Las 41 comprobaciones del entrypoint pasaron. |
+| Perfil `production` en MySQL 8.4.13 aislado | Usuario exclusivo DML y dos sesiones TLS en `savorsync_v34_validation`. CA obligatoria, PKCS12, `VERIFY_IDENTITY` y fallback desactivado. Hibernate `validate` con Flyway desactivado. Health, restaurantes y publicaciones 200. Reservas anónimas 401. Se rechazaron configuración externa, CA ausente y DNS incompatible. `bootstrap-admin` creó una cuenta sintética sin verificar. El escaneo de argumentos y logs no encontró las contraseñas de prueba. |
+
+Se ejecutó la suite completa. La única excepción de `baseline` autorizada se aplicó dentro de los dos tests existentes de `MysqlLegacyBaselineValidationTest`, cada uno sobre un esquema sintético nuevo y desechable. La prohibición permanece para Aiven, `defaultdb`, `savorsync_v34_validation` y cualquier base real o preexistente. La comparación del escenario C usó un historial creado al aplicar V1–V6 y se completó sin `baseline`, `repair` ni `clean`.
+
+El ensayo cubrió MySQL local 8.4.13. Quedan pendientes el corte sobre Aiven 8.4.11 y la comprobación de Render con el artefacto aprobado. Los avisos de `open-in-view`, `MySQLDialect` y Commons Logging quedan fuera de V3.5-B. P0 continúa abierto. [Migración y reversión](docs/PRODUCTION_MIGRATION_RUNBOOK.md#flyway-11150-en-v35-b)
+
 ## 2026-11-26 · V3.5-A.1 · Correcciones de auditoría
 
 Se reforzó V3.5-A sobre la misma base V3.4. El guard de Spring Boot comprueba las fuentes externas antes de procesar JSON o imports y valida los perfiles efectivos antes del contexto. El entrypoint fija la configuración del classpath, conserva la CA obligatoria y detecta los nombres con puntos que el intérprete podría descartar. La URL productiva sigue limitada a `savorsync_v34_validation` y `defaultdb` conserva su condición histórica. V1–V6, el Dockerfile y las dependencias quedaron intactos.
