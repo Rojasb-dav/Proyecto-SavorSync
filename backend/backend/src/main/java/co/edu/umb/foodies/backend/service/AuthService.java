@@ -63,7 +63,6 @@ public class AuthService {
 
         // A restaurant account remains a Foodie until the verified request is approved.
         String userId = UUID.randomUUID().toString();
-        identities.register("client", userId, email, username, requestedRole);
         User user = User.builder()
                 .id(userId)
                 .email(email)
@@ -75,6 +74,7 @@ public class AuthService {
                 .emailVerified(false)
                 .build();
         user = userRepository.saveAndFlush(user);
+        identities.register("client", userId, email, username, requestedRole);
 
         EmailVerificationService.IssuedChallenge challenge = challenges.issue(
                 user.getId(), email, PasswordResetToken.IdentityType.client,
@@ -239,7 +239,6 @@ public class AuthService {
         }
 
         String employeeId = UUID.randomUUID().toString();
-        identities.register("employee", employeeId, email, username);
         Employee employee = Employee.builder()
                 .id(employeeId)
                 .email(email)
@@ -251,6 +250,7 @@ public class AuthService {
                 .emailVerified(false)
                 .build();
         employee = employeeRepository.saveAndFlush(employee);
+        identities.register("employee", employeeId, email, username);
         challenges.issue(employee.getId(), email, PasswordResetToken.IdentityType.employee,
                 PasswordResetToken.Purpose.EMAIL_VERIFICATION, sourceAddress(httpReq));
         return UserResponse.fromSelf(employee);

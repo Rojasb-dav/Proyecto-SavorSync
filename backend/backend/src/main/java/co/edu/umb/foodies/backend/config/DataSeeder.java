@@ -50,7 +50,6 @@ public class DataSeeder implements CommandLineRunner {
         if (employeeRepository.existsByEmail("moderador@savorsync.com")) return;
 
         String id = UUID.randomUUID().toString();
-        identities.register("employee", id, "moderador@savorsync.com", "moderador_pqrs");
         Employee moderator = Employee.builder()
                 .id(id)
                 .email("moderador@savorsync.com")
@@ -62,5 +61,6 @@ public class DataSeeder implements CommandLineRunner {
                 .emailVerified(false)
                 .build();
         employeeRepository.saveAndFlush(moderator);
+        identities.register("employee", id, moderator.getEmail(), moderator.getUsername());
     }
 }

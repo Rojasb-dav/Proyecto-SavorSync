@@ -74,21 +74,17 @@ public class PqrsController {
                     p.setFechaCierre(LocalDateTime.now());
                 }
 
-                try {
-                    Notification n = Notification.builder()
-                            .id(UUID.randomUUID().toString())
-                            .clienteId(p.getClienteId())
-                            .type(Notification.NotificationType.pqrs)
-                            .title("Actualización de PQRS: " + p.getEstado())
-                            .body("Tu caso '" + p.getAsunto() + "' ha sido " + p.getEstado() + ". Respuesta: " + (p.getRespuesta() != null ? p.getRespuesta() : "En gestión interna."))
-                            .read(false)
-                            .channel(Notification.Channel.in_app)
-                            .createdAt(LocalDateTime.now())
-                            .build();
-                    notificationRepository.save(n);
-                } catch (Exception e) {
-                    System.err.println("WARN: Fallo al notificar PQRS: " + e.getMessage());
-                }
+                Notification n = Notification.builder()
+                        .id(UUID.randomUUID().toString())
+                        .clienteId(p.getClienteId())
+                        .type(Notification.NotificationType.pqrs)
+                        .title("Actualización de PQRS: " + p.getEstado())
+                        .body("Tu caso '" + p.getAsunto() + "' ha sido " + p.getEstado() + ". Respuesta: " + (p.getRespuesta() != null ? p.getRespuesta() : "En gestión interna."))
+                        .read(false)
+                        .channel(Notification.Channel.in_app)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                notificationRepository.save(n);
             }
 
             return ResponseEntity.ok(pqrsRepository.save(p));

@@ -45,14 +45,14 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar Restaurante Definitivamente'),
-        content: Text('¿Seguro que deseas eliminar el restaurante "${r.name}"? Esta acción eliminará el local de la plataforma.'),
+        title: const Text('Desactivar restaurante'),
+        content: Text('¿Quieres desactivar "${r.name}"? Se ocultará el local y se conservará su historial.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar Local 🗑️', style: TextStyle(color: Colors.white)),
+            child: const Text('Desactivar local', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -65,12 +65,12 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
       _loadRestaurants();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Restaurante "${r.name}" eliminado definitivamente')),
+        SnackBar(content: Text('Restaurante "${r.name}" desactivado')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al eliminar restaurante: $e'), backgroundColor: AppColors.error),
+        SnackBar(content: Text('Error al desactivar restaurante: $e'), backgroundColor: AppColors.error),
       );
     }
   }
@@ -146,7 +146,7 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
           ),
           if (canDelete) IconButton(
             icon: const Icon(Icons.delete_forever_rounded, color: AppColors.error),
-            tooltip: 'Eliminar Local Definitivamente',
+            tooltip: 'Desactivar restaurante',
             onPressed: () {
               Navigator.pop(ctx);
               _deleteRestaurant(r);
@@ -243,7 +243,7 @@ class _RestaurantApprovalsScreenState extends State<RestaurantApprovalsScreen> {
                             const SizedBox(width: 8),
                             if (canDelete) IconButton(
                               icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
-                              tooltip: 'Eliminar Restaurante Definitivamente',
+                              tooltip: 'Desactivar restaurante',
                               onPressed: () => _deleteRestaurant(r),
                             ),
                           ],

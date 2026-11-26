@@ -43,9 +43,9 @@ public class FirstAdminProvisioning {
         }
         String id = UUID.randomUUID().toString();
         String email = identity.email().toLowerCase(Locale.ROOT);
-        identities.register("employee", id, email, identity.username());
         employees.saveAndFlush(Employee.builder().id(id).email(email).username(identity.username())
                 .fullName(identity.fullName()).password(passwords.encode(CharBuffer.wrap(password)))
                 .role(Employee.Role.admin_sistema).isActive(true).emailVerified(false).build());
+        identities.register("employee", id, email, identity.username());
     }
 }

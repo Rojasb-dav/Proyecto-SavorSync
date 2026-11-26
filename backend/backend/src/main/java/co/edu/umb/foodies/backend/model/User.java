@@ -2,11 +2,9 @@ package co.edu.umb.foodies.backend.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import lombok.EqualsAndHashCode;
+import org.hibernate.annotations.Formula;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -65,22 +63,14 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-        name = "seguidores",
-        joinColumns = @JoinColumn(name = "seguidor_id", columnDefinition = "CHAR(36)"),
-        inverseJoinColumns = @JoinColumn(name = "seguido_id", columnDefinition = "CHAR(36)")
-    )
-    @Builder.Default
-    private Set<User> following = new HashSet<>();
+    @Formula("(select count(*) from seguidores f where f.seguido_id = id)")
+    private int followersCount;
 
-    @ManyToMany(mappedBy = "following", fetch = FetchType.EAGER)
-    @Builder.Default
-    private Set<User> followers = new HashSet<>();
+    @Formula("(select count(*) from seguidores f where f.seguidor_id = id)")
+    private int followingCount;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private Set<Post> posts = new HashSet<>();
+    @Formula("(select count(*) from publicaciones p where p.cliente_id = id and p.deleted_at is null)")
+    private int postsCount;
 
     @PrePersist
     public void prePersist() {
@@ -88,9 +78,6 @@ public class User {
         if (role == null) role = Role.foodie;
         if (isActive == null) isActive = true;
         if (emailVerified == null) emailVerified = false;
-        if (following == null) following = new HashSet<>();
-        if (followers == null) followers = new HashSet<>();
-        if (posts == null) posts = new HashSet<>();
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;

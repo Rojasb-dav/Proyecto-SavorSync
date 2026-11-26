@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -18,17 +17,6 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from PasswordResetToken t where t.id = :id")
     Optional<PasswordResetToken> findByIdForUpdate(@Param("id") String id);
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            select t from PasswordResetToken t
-            where t.identityId = :identityId and t.purpose = :purpose
-              and t.consumedAt is null
-            order by t.createdAt desc
-            """)
-    List<PasswordResetToken> findActiveForIdentityForUpdate(
-            @Param("identityId") String identityId,
-            @Param("purpose") PasswordResetToken.Purpose purpose);
 
     @Query(value = """
             SELECT * FROM tokens_recuperacion
@@ -52,10 +40,11 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Query("""
             update PasswordResetToken t
             set t.consumedAt = CURRENT_TIMESTAMP
-            where t.identityId = :identityId and t.purpose = :purpose
+            where t.identityId = :identityId and t.identityType = :identityType and t.purpose = :purpose
               and t.consumedAt is null
             """)
     int consumeActiveForIdentity(
             @Param("identityId") String identityId,
+            @Param("identityType") PasswordResetToken.IdentityType identityType,
             @Param("purpose") PasswordResetToken.Purpose purpose);
 }

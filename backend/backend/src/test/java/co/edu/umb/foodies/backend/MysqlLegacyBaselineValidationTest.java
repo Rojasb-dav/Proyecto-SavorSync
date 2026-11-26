@@ -58,7 +58,7 @@ class MysqlLegacyBaselineValidationTest {
                 assertThat(count(statement, "seguidores", schema)).isEqualTo(1);
                 assertThat(count(statement, "reservas", schema)).isEqualTo(1);
                 assertThat(count(statement, "tokens_recuperacion", schema)).isZero();
-                assertThat(count(statement, "flyway_schema_history", schema)).isEqualTo(5);
+                assertThat(count(statement, "flyway_schema_history", schema)).isEqualTo(6);
 
                 try (ResultSet requestedRole = statement.executeQuery(
                         "SELECT requested_role FROM account_identity_registry "
@@ -162,13 +162,13 @@ class MysqlLegacyBaselineValidationTest {
         String originalUrl = required("SAVORSYNC_SESSION_MYSQL_URL");
         assertThat(originalUrl)
                 .as("Migration validation may only connect to the local MySQL test server")
-                .matches("jdbc:mysql://127\\.0\\.0\\.1:[0-9]+/foodies_db(?:_v32_[a-z0-9_]+)?(?:\\?.*)?");
+                .matches("jdbc:mysql://127\\.0\\.0\\.1:[0-9]+/foodies_db(?:_v(?:32|34)_[a-z0-9_]+)?(?:\\?.*)?");
         String user = required("SAVORSYNC_SESSION_MYSQL_USER");
         String password = required("SAVORSYNC_SESSION_MYSQL_PASSWORD");
         String rootPassword = required("SAVORSYNC_SESSION_MYSQL_ROOT_PASSWORD");
-        String rootUrl = originalUrl.replaceFirst("/foodies_db(?:_v32_[a-z0-9_]+)?(?:\\?.*)?$",
+        String rootUrl = originalUrl.replaceFirst("/foodies_db(?:_v(?:32|34)_[a-z0-9_]+)?(?:\\?.*)?$",
                 "/mysql?sslMode=DISABLED&allowPublicKeyRetrieval=true");
-        String schemaUrl = originalUrl.replaceFirst("/foodies_db(?:_v32_[a-z0-9_]+)?(?:\\?.*)?$",
+        String schemaUrl = originalUrl.replaceFirst("/foodies_db(?:_v(?:32|34)_[a-z0-9_]+)?(?:\\?.*)?$",
                 "/" + schema + "?sslMode=DISABLED&allowPublicKeyRetrieval=true");
         try (Connection root = DriverManager.getConnection(rootUrl, "root", rootPassword);
              Statement statement = root.createStatement()) {

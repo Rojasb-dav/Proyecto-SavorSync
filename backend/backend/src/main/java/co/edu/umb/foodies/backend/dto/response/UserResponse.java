@@ -38,10 +38,13 @@ public class UserResponse {
 
     public static UserResponse fromPublic(User u, String viewerId) {
         if (u == null) return null;
-        boolean isOwner = viewerId != null && viewerId.equals(u.getId());
-        String safeEmail = isOwner ? u.getEmail() : null;
-        String safePhone = isOwner ? u.getPhone() : null;
-        return buildFromUser(u, safeEmail, safePhone, viewerId);
+        return fromPublic(u, viewerId, viewerId == null ? null : false);
+    }
+
+    public static UserResponse fromPublic(User u, String viewerId, Boolean following) {
+        if (u == null) return null;
+        boolean isOwner = u.getId().equals(viewerId);
+        return buildFromUser(u, isOwner ? u.getEmail() : null, isOwner ? u.getPhone() : null, following);
     }
 
     public static UserResponse fromAdmin(User u) {
@@ -64,30 +67,7 @@ public class UserResponse {
                 .build();
     }
 
-    private static UserResponse buildFromUser(User u, String emailToSet, String phoneToSet, String currentUserId) {
-        boolean isFollowing = false;
-        try {
-            if (currentUserId != null && u.getFollowers() != null) {
-                isFollowing = u.getFollowers().stream()
-                        .anyMatch(follower -> follower != null && currentUserId.equals(follower.getId()));
-            }
-        } catch (Exception ignored) {}
-
-        int followersCount = 0;
-        try {
-            if (u.getFollowers() != null) followersCount = u.getFollowers().size();
-        } catch (Exception ignored) {}
-
-        int followingCount = 0;
-        try {
-            if (u.getFollowing() != null) followingCount = u.getFollowing().size();
-        } catch (Exception ignored) {}
-
-        int postsCount = 0;
-        try {
-            if (u.getPosts() != null) postsCount = u.getPosts().size();
-        } catch (Exception ignored) {}
-
+    private static UserResponse buildFromUser(User u, String emailToSet, String phoneToSet, Boolean following) {
         return UserResponse.builder()
                 .id(u.getId())
                 .email(emailToSet)
@@ -101,10 +81,10 @@ public class UserResponse {
                 .emailVerified(u.getEmailVerified())
                 .createdAt(u.getCreatedAt())
                 .updatedAt(u.getUpdatedAt())
-                .followersCount(followersCount)
-                .followingCount(followingCount)
-                .postsCount(postsCount)
-                .isFollowing(currentUserId != null ? isFollowing : null)
+                .followersCount(u.getFollowersCount())
+                .followingCount(u.getFollowingCount())
+                .postsCount(u.getPostsCount())
+                .isFollowing(following)
                 .build();
     }
 }

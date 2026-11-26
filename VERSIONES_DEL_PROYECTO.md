@@ -2,6 +2,33 @@
 
 Registro de cambios, decisiones y resultados de verificación de SavorSync. El [README](README.md) describe el estado vigente. Las cifras siguientes provienen de los informes de cada iteración.
 
+## 2026-11-26 · V3.4 · Integridad referencial
+
+Base [`ef2ef6a`](https://github.com/Rojasb-dav/Proyecto-SavorSync/commit/ef2ef6a1b680974a27b7655077a960ba805da5ed), sobre la entrega funcional [`7c9879b1`](https://github.com/Rojasb-dav/Proyecto-SavorSync/commit/7c9879b18e5c874e99f30a097169c57a7c005621). Se aprueba instalar con tablas limpias y conservar exclusivamente en el respaldo histórico los registros de prueba de las primeras versiones. El propietario reportó checksum SHA256 y restauración privada comprobada en MySQL 8.4.13. Esa instancia no formó parte de esta iteración.
+
+- `Follow` mapea la fila con identidad propia, dos referencias a clientes y fecha. Desaparecen las asociaciones Hibernate implícitas y las colecciones completas de perfiles. Se serializan los seguidores y se mantienen los contadores del contrato JSON.
+- La API exige un propietario válido de rol Restaurant Admin. Al publicar una reseña usa el ID del restaurante activo que envía Flutter. La búsqueda por nombre se conserva para clientes anteriores y solo enlaza una coincidencia inequívoca. Aprobación y titularidad se conservan por separado. Los DELETE de restaurante, cliente y publicación conservan las filas y su historial. Las reservas activas no se pueden crear en un local desactivado.
+- V6 conserva V1–V5, introduce marcadores de baja y checks de integridad, valida el rol del propietario y agrega tres claves foráneas tipadas para reportes. La FK de comentarios vincula padre y publicación. Recuenta likes y comentarios a partir de filas y comprueba datos incompatibles de V5 antes de alterar tablas.
+- Reservas, comentarios, likes y seguidores confirman sus cambios y avisos internos juntos. El registro de identidad y la cuenta se guardan en la misma transacción. V6 exige identidad válida en desafíos activos y verifica que las sesiones nuevas correspondan a cuentas activas y verificadas. Se comprueba que el archivo asociado pertenezca al autor y a un destino real. La eliminación de medios sigue coordinada con el registro y la inspección de referencias.
+- Flutter conserva rutas y navegación. La confirmación de restaurantes explica que la acción desactiva y preserva historial. El formulario de reseñas limita la calificación a valores que admite la columna académica.
+
+### Evidencia de V3.4
+
+| Ejecución | Resultado |
+|---|---|
+| Backend, Gradle 9.4.1 y toolchain Java 17 | `gradlew.bat build` correcto. 83 pruebas aprobadas en 17 XML JUnit, 0 fallidas, 0 errores y 0 omitidas. Incluye las regresiones de identidad, OTP, recuperación, sesiones y autorización. |
+| MySQL 8.0.46 aislado | Instalación V1–V6 desde cero, actualización con fixtures y baseline académico conservados. Se verificaron 27 tablas, 35 FK, 31 triggers y la reejecución sin pendientes. Hibernate `validate` correcto. |
+| MySQL 8.4.13 aislado | Instalación limpia V1–V6. La copia histórica estricta de V3.3 funcionó sobre V5 con datos sintéticos y la actualización posterior a V6 preservó referencias. Un ciclo en V5 bloqueó la migración antes del primer ALTER permanente. Hibernate arrancó con la copia sintética actualizada. |
+| Integridad y concurrencia | Titularidad, baja lógica, conservación de reservas, analíticas y publicaciones, unicidad, contadores, revocación y rollback verificados con fixtures. Se rechazaron FK incompatibles y altas sin permisos. |
+| Docker Linux | Imagen local final compilada y arrancada con un usuario MySQL de permisos DML. `GET /actuator/health` devolvió HTTP 200 y `{"status":"UP"}`. |
+| Flutter 3.41.9 y Dart 3.11.5 | Resolución con lockfile, 11 pruebas aprobadas, Web release y APK debug compilados con API local. Analyze terminó con código 1 por 16 diagnósticos informativos preexistentes. Sin errores ni advertencias. |
+| Chrome | El corredor de `test/api_base_url_test.dart` permaneció cargando el archivo y se interrumpió a los 130 s con código 1. Quedó sin resultado. |
+| Validaciones sin ejecutar | Dispositivo Android, APK release firmado, Aiven, despliegues y pruebas reales de Brevo, Cloudinary o Firebase. |
+
+La primera ejecución señaló un delimitador de Flyway y una ejecución posterior señaló expectativas de prueba incompatibles con V6 y la secuencia de registro. Las correcciones se verificaron con una suite completa sobre un esquema nuevo.
+
+P0 sigue abierto. El corte limpio y los permisos para triggers de Aiven, TLS JDBC, proxy, rotaciones y flujos externos permanecen pendientes. La política de retención y los flujos inexistentes de P1 siguen fuera del alcance. El IDE conserva la codificación original de los README existentes. La normalización a UTF-8 queda pendiente de una operación de codificación segura.
+
 ## 2026-11-26 · Consolidación documental
 
 Base [`7c9879b`](https://github.com/Rojasb-dav/Proyecto-SavorSync/commit/7c9879b18e5c874e99f30a097169c57a7c005621). Se centralizan alcance, arquitectura, trazabilidad y pendientes en el README. Los procedimientos y referencias técnicas viven en `docs/`. Los informes de cada corte se consultan en Git. La verificación de esta iteración se limita a la documentación y a sus enlaces. El estado funcional y los bloqueantes de producción de V3.3 siguen vigentes.

@@ -1,6 +1,19 @@
 # Migración y recuperación del esquema SavorSync
 
-Procedimiento reservado al propietario. Ensayar primero con artefactos autorizados en una instancia aislada. Usar el archivo estructural y fixtures sintéticos para compartir evidencias. Mantener los respaldos privados cifrados fuera del repositorio y documentar su checksum, fecha UTC, versión de MySQL y capacidad de restauración. La ruta de migración de Aiven es la copia a esquema nuevo descrita en [AIVEN_SCHEMA_COMPATIBILITY.md](AIVEN_SCHEMA_COMPATIBILITY.md).
+Procedimiento reservado al propietario. Ensayar primero con artefactos autorizados en una instancia aislada. Usar el archivo estructural y fixtures sintéticos para compartir evidencias. Mantener los respaldos privados cifrados fuera del repositorio y documentar su checksum, fecha UTC, versión de MySQL y capacidad de restauración.
+
+## Instalación limpia aprobada para V3.4
+
+El propietario reportó exportación de Aiven, verificación SHA256 y restauración privada en MySQL 8.4.13. Los registros de prueba previos se conservan exclusivamente en ese respaldo protegido. La instalación definitiva comienza con tablas limpias y se puebla mediante los flujos oficiales.
+
+1. Autorizar la ventana y congelar escrituras. Verificar checksum y evidencia de restauración antes de sustituir la base histórica. Mantenerla aislada y fuera de la URL de la aplicación.
+2. Preparar un destino vacío con `utf8mb4` y `utf8mb4_unicode_ci`. Aplicar Flyway V1–V6 con permisos de migración, incluidos `CREATE TEMPORARY TABLES`, `ALTER`, `REFERENCES` y `TRIGGER`, y CA validada. Comprobar los checksums, 22 tablas académicas, cuatro auxiliares y el historial Flyway sin entradas fallidas ni pendientes.
+3. Ejecutar Hibernate con `ddl-auto=validate` y el usuario habitual. Comprobar que no existan cuentas iniciales ni fixtures y que `/actuator/health` responda. Continuar con el aprovisionamiento individual del primer administrador cuando el propietario autorice el corte.
+4. Si Flyway falla durante DDL, detener el corte. MySQL puede confirmar cambios parciales. Revisar la fila de historial y los metadatos de un entorno aislado, preparar un destino vacío verificable y conservar la copia histórica protegida para recuperación. Coordinar aplicación y base en el rollback. Antes de revertir, decidir cómo preservar las escrituras oficiales posteriores al corte.
+
+## Copia estricta histórica de V3.3
+
+Este procedimiento se conserva para reproducir la validación histórica con fixtures. Requiere un destino preparado **hasta V5** antes de usar el [SQL de copia](../backend/backend/ops/copy-partial-schema.sql). V6 vuelve inmutables las relaciones de comentarios, por lo que el paso de reparación de referencias de la copia histórica debe completarse en V5. Una actualización posterior a V6 exige datos compatibles y una aprobación separada. Los registros de prueba de Aiven permanecen en el respaldo histórico.
 
 1. Obtener autorización de mantenimiento, inventariar el esquema real y confirmar puerto y CA. Medir conteos y capturar restricciones sin exportar datos personales a logs.
 2. Detener escrituras y preparar el respaldo definitivo. Restaurar una copia como savorsync_legacy_source, con un usuario de solo lectura para ese esquema durante la copia. Verificar PK, conteos y referencias en la restauración.
@@ -13,6 +26,6 @@ Procedimiento reservado al propietario. Ensayar primero con artefactos autorizad
 
 ## MySQL gestionado y respaldos
 
-Aiven lista TRIGGER como privilegio asignable en bases de usuario. El privilegio no elimina el requisito de MySQL cuando está activo el binary log y log_bin_trust_function_creators está desactivado. Aiven no publica ese parámetro en la referencia consultada. Antes del corte, pedir confirmación al proveedor y probar creación e importación de los triggers en instancia separada. Si no se puede habilitar bajo autorización, detener la puesta en producción. Conservar V1 y V2 y sus checksums mientras se aprueba una alternativa. [Privilegios de Aiven](https://aiven.io/docs/products/mysql/howto/manage-service-users) · [Parámetros Aiven](https://aiven.io/docs/products/mysql/reference/advanced-params) · [Binary logging de MySQL](https://dev.mysql.com/doc/refman/8.4/en/stored-programs-logging.html)
+Aiven lista TRIGGER como privilegio asignable en bases de usuario. El privilegio no elimina el requisito de MySQL cuando está activo el binary log y log_bin_trust_function_creators está desactivado. Aiven no publica ese parámetro en la referencia consultada. Antes del corte, pedir confirmación al proveedor y probar creación e importación de los triggers en instancia separada. Si no se puede habilitar bajo autorización, detener la puesta en producción. Conservar V1–V5 y sus checksums mientras se aprueba una alternativa. [Privilegios de Aiven](https://aiven.io/docs/products/mysql/howto/manage-service-users) · [Parámetros Aiven](https://aiven.io/docs/products/mysql/reference/advanced-params) · [Binary logging de MySQL](https://dev.mysql.com/doc/refman/8.4/en/stored-programs-logging.html)
 
 Antes de apagar el servicio, exportar respaldo íntegro cifrado, esquema, historial Flyway y evidencias de restauración a una ubicación del propietario. Conservar dos copias independientes de Aiven. Al reactivar, restaurar en un servicio compatible, renovar el usuario DB y CA según la instancia, validar checksums y disparadores, repetir el smoke test y solo entonces actualizar Render.

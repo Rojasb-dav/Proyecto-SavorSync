@@ -5,6 +5,7 @@ import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -34,20 +35,21 @@ public class NotificationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(notificationRepository.save(notification));
     }
 
+    @Transactional
     @PutMapping("/{id}/read")
     public ResponseEntity<Notification> markRead(@PathVariable String id, HttpServletRequest request) {
         String owner = request.getUserPrincipal().getName();
-        return notificationRepository.findById(id).filter(n -> owner.equals(n.getClienteId())).map(n -> {
+        return notificationRepository.findByIdAndClienteId(id, owner).map(n -> {
             n.setRead(true);
-            return ResponseEntity.ok(notificationRepository.save(n));
+            return ResponseEntity.ok(n);
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    @Transactional
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNotification(@PathVariable String id, HttpServletRequest request) {
         String owner = request.getUserPrincipal().getName();
-        var notification = notificationRepository.findById(id)
-                .filter(n -> owner.equals(n.getClienteId()))
+        var notification = notificationRepository.findByIdAndClienteId(id, owner)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notificación no encontrada"));
         notificationRepository.delete(notification);
         return ResponseEntity.noContent().build();

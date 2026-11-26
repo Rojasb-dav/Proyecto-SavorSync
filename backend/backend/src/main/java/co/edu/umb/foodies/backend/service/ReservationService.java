@@ -60,10 +60,16 @@ public class ReservationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Restaurante no especificado");
         }
 
-        Restaurant restaurant = restaurantRepository.findById(reservation.getRestaurantId())
+        User client = userRepository.findByIdForUpdate(clientId)
+                .filter(user -> user.getRole() == User.Role.foodie && Boolean.TRUE.equals(user.getIsActive())
+                        && Boolean.TRUE.equals(user.getEmailVerified()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Solo una cuenta Foodie verificada puede reservar."));
+
+        Restaurant restaurant = restaurantRepository.findByIdForUpdate(reservation.getRestaurantId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Restaurante no encontrado"));
 
-        if (restaurant.getStatus() != Restaurant.RestaurantStatus.activo) {
+        if (restaurant.getStatus() != Restaurant.RestaurantStatus.activo || restaurant.getDeactivatedAt() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El restaurante no está activo para recibir reservas");
         }
 
@@ -79,8 +85,8 @@ public class ReservationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La hora de la reserva ya pasó");
         }
 
-        if (reservation.getNumPersonas() == null || reservation.getNumPersonas() < 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La reserva debe ser para al menos 1 persona");
+        if (reservation.getNumPersonas() == null || reservation.getNumPersonas() < 1 || reservation.getNumPersonas() > 127) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La reserva debe ser para entre 1 y 127 personas");
         }
 
         int dayOfWeek = reservation.getFechaReserva().getDayOfWeek().getValue() % 7; // Domingo=0 en el modelo
@@ -101,40 +107,46 @@ public class ReservationService {
         reservation.setId(UUID.randomUUID().toString());
         reservation.setClienteId(clientId);
         reservation.setEstado(Reservation.ReservationStatus.pendiente);
+        reservation.setCreatedAt(null);
 
         Reservation saved = reservationRepository.save(reservation);
 
-        // Notificar al dueño del restaurante
-        try {
-            User client = userRepository.findById(clientId).orElse(null);
-            String clientName = client != null ? client.getFullName() : "Un foodie";
-            notificationRepository.save(Notification.builder()
-                    .id(UUID.randomUUID().toString())
-                    .clienteId(restaurant.getOwnerId())
-                    .type(Notification.NotificationType.reserva)
-                    .title("¡Nueva solicitud de reserva! 📅")
-                    .body(clientName + " ha solicitado una mesa para " + saved.getNumPersonas() + " personas el " + saved.getFechaReserva() + " a las " + saved.getHoraReserva())
-                    .read(false)
-                    .channel(Notification.Channel.in_app)
-                    .createdAt(LocalDateTime.now())
-                    .build());
-        } catch (Exception e) {
-            System.err.println("WARN: Fallo al notificar reserva al dueño: " + e.getMessage());
-        }
+        notificationRepository.save(Notification.builder()
+                .id(UUID.randomUUID().toString())
+                .clienteId(restaurant.getOwnerId())
+                .type(Notification.NotificationType.reserva)
+                .title("¡Nueva solicitud de reserva! 📅")
+                .body(client.getFullName() + " ha solicitado una mesa para " + saved.getNumPersonas()
+                        + " personas el " + saved.getFechaReserva() + " a las " + saved.getHoraReserva())
+                .read(false)
+                .channel(Notification.Channel.in_app)
+                .createdAt(LocalDateTime.now())
+                .build());
 
         return convertToDTO(saved);
     }
 
     @Transactional
     public ReservationDTO updateStatus(String reservationId, Reservation.ReservationStatus newStatus, String ownerId) {
-        Reservation r = reservationRepository.findById(reservationId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
-
-        requireRestaurantOwner(r.getRestaurantId(), ownerId);
-
         if (newStatus == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Estado inválido");
         }
+        userRepository.findByIdForUpdate(ownerId)
+                .filter(owner -> owner.getRole() == User.Role.restaurant_admin
+                        && Boolean.TRUE.equals(owner.getIsActive()) && Boolean.TRUE.equals(owner.getEmailVerified()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Propietario no habilitado"));
+        String restaurantId = reservationRepository.findRestaurantId(reservationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
+        Restaurant restaurant = restaurantRepository.findByIdForUpdate(restaurantId)
+                .filter(found -> ownerId.equals(found.getOwnerId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "No puedes gestionar reservas de este restaurante"));
+        if (restaurant.getDeactivatedAt() != null && newStatus != Reservation.ReservationStatus.cancelada
+                && newStatus != Reservation.ReservationStatus.completada) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El restaurante está desactivado");
+        }
+        Reservation r = reservationRepository.findByIdForUpdate(reservationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
 
         // Restringir transiciones inválidas
         if (r.getEstado() == Reservation.ReservationStatus.completada || r.getEstado() == Reservation.ReservationStatus.cancelada) {
@@ -147,25 +159,16 @@ public class ReservationService {
 
         // Notificar al foodie del cambio
         if (oldStatus != newStatus) {
-            try {
-                Restaurant rest = restaurantRepository.findById(r.getRestaurantId()).orElse(null);
-                String restName = rest != null ? rest.getName() : "El restaurante";
-
-                String emoji = newStatus == Reservation.ReservationStatus.confirmada ? "✅" : (newStatus == Reservation.ReservationStatus.cancelada ? "❌" : "ℹ️");
-
-                notificationRepository.save(Notification.builder()
-                        .id(UUID.randomUUID().toString())
-                        .clienteId(r.getClienteId())
-                        .type(Notification.NotificationType.reserva)
-                        .title("Estado de reserva actualizado " + emoji)
-                        .body(restName + " ha marcado tu reserva del " + r.getFechaReserva() + " como " + newStatus)
-                        .read(false)
-                        .channel(Notification.Channel.in_app)
-                        .createdAt(LocalDateTime.now())
-                        .build());
-            } catch (Exception e) {
-                System.err.println("WARN: Fallo al notificar estado de reserva al foodie: " + e.getMessage());
-            }
+            notificationRepository.save(Notification.builder()
+                    .id(UUID.randomUUID().toString())
+                    .clienteId(r.getClienteId())
+                    .type(Notification.NotificationType.reserva)
+                    .title("Estado de reserva actualizado")
+                    .body(restaurant.getName() + " ha marcado tu reserva del " + r.getFechaReserva() + " como " + newStatus)
+                    .read(false)
+                    .channel(Notification.Channel.in_app)
+                    .createdAt(LocalDateTime.now())
+                    .build());
         }
 
         return convertToDTO(saved);

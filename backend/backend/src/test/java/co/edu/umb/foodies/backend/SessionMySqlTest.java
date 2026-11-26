@@ -53,12 +53,13 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @EnabledIfEnvironmentVariable(named = "SAVORSYNC_SESSION_MYSQL_URL",
-        matches = "jdbc:mysql://127\\.0\\.0\\.1:[0-9]+/foodies_db(?:_v32_[a-z0-9_]+)?(?:\\?.*)?")
+        matches = "jdbc:mysql://127\\.0\\.0\\.1:[0-9]+/foodies_db(?:_v(?:32|34)_[a-z0-9_]+)?(?:\\?.*)?")
 class SessionMySqlTest {
 
     private static final String JWT_SECRET = UUID.randomUUID().toString() + UUID.randomUUID();
 
     @Autowired private TestRestTemplate http;
+    @Autowired private org.springframework.transaction.support.TransactionTemplate transaction;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private UserService userService;
     @Autowired private PostService postService;
@@ -71,6 +72,7 @@ class SessionMySqlTest {
     @Autowired private PasswordEncoder passwordEncoder;
 
     @SpyBean private PostRepository postRepository;
+    @SpyBean private co.edu.umb.foodies.backend.repository.NotificationRepository notifications;
     @MockBean private JavaMailSender mailSender;
 
     @DynamicPropertySource
@@ -375,7 +377,18 @@ class SessionMySqlTest {
 
     private int claimIdentity(String type, String email) {
         try {
-            identities.register(type, UUID.randomUUID().toString(), email, unique(type));
+            transaction.executeWithoutResult(ignored -> {
+                String id = UUID.randomUUID().toString();
+                String username = unique(type);
+                if ("client".equals(type)) {
+                    users.saveAndFlush(User.builder().id(id).email(email).username(username)
+                            .password("fixture-only").fullName("Synthetic client").build());
+                } else {
+                    employees.saveAndFlush(Employee.builder().id(id).email(email).username(username)
+                            .password("fixture-only").fullName("Synthetic employee").role(Employee.Role.moderador).build());
+                }
+                identities.register(type, id, email, username);
+            });
             return 201;
         } catch (org.springframework.web.server.ResponseStatusException duplicate) {
             return duplicate.getStatusCode().value();
@@ -445,7 +458,7 @@ class SessionMySqlTest {
 
         String rollbackUrl = recordAsset(owner.userId(), "rollback");
         doThrow(new DataIntegrityViolationException("synthetic persistence failure"))
-                .when(postRepository).save(any(co.edu.umb.foodies.backend.model.Post.class));
+                .when(postRepository).saveAndFlush(any(co.edu.umb.foodies.backend.model.Post.class));
         assertThatThrownBy(() -> postService.createPost(postWithImage(rollbackUrl), owner.userId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
         reset(postRepository);
@@ -474,6 +487,175 @@ class SessionMySqlTest {
                 .isEqualTo("https://legacy.example.test/historical.png");
     }
 
+    @Test
+    void concurrentFollowingIsIdempotentAndUpdatesProfileWithoutLoadingCollections() throws Exception {
+        RegisteredUser follower = registerAndVerify("follow", "foodie");
+        RegisteredUser followed = registerAndVerify("followed", "foodie");
+        var results = runTogether(
+                () -> status(HttpMethod.POST, "/api/v1/follows/" + followed.userId(), follower.token(), null),
+                () -> status(HttpMethod.POST, "/api/v1/follows/" + followed.userId(), follower.token(), null));
+        assertThat(results).containsExactly(200, 200);
+        assertThat(count("SELECT COUNT(*) FROM seguidores WHERE seguidor_id = ? AND seguido_id = ?",
+                follower.userId(), followed.userId())).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM notificaciones_cliente WHERE cliente_id = ? AND tipo = 'seguidor'",
+                followed.userId())).isEqualTo(1);
+        UserResponse profile = userService.getById(followed.userId(), follower.userId());
+        assertThat(profile.getFollowersCount()).isEqualTo(1);
+        assertThat(profile.getIsFollowing()).isTrue();
+        assertThat(status(HttpMethod.POST, "/api/v1/follows/" + follower.userId(), follower.token(), null)).isEqualTo(400);
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO seguidores (seguidor_id, seguido_id) VALUES (?, ?)",
+                follower.userId(), follower.userId())).hasMessageContaining("ck_follow_distinct_accounts");
+        assertThat(status(HttpMethod.DELETE, "/api/v1/follows/" + followed.userId(), follower.token(), null)).isEqualTo(200);
+        assertThat(userService.getById(followed.userId(), follower.userId()).getIsFollowing()).isFalse();
+    }
+
+    @Test
+    void concurrentLikesAndCommentsPreserveCountersAndSoftDeletionPreservesReferences() throws Exception {
+        RegisteredUser author = registerAndVerify("review", "foodie");
+        RegisteredUser reader = registerAndVerify("reader", "foodie");
+        String postId = postService.createPost(postWithImage(null), author.userId()).getId();
+        String otherId = postService.createPost(postWithImage(null), author.userId()).getId();
+        String rootId = postService.addComment(postId, author.userId(), "Comentario raíz", null).getId();
+        assertThatThrownBy(() -> postService.addComment(otherId, reader.userId(), "Inválido", rootId))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO comentarios (publicacion_id,cliente_id,parent_id,contenido)
+                VALUES (?,?,?,'Respuesta inválida')
+                """, otherId, reader.userId(), rootId)).isInstanceOf(DataIntegrityViolationException.class);
+        String replyId = postService.addComment(postId, reader.userId(), "Respuesta", rootId).getId();
+        assertThatThrownBy(() -> jdbc.update("UPDATE comentarios SET parent_id=? WHERE id=?", replyId, rootId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        var comments = "/api/v1/posts/" + postId + "/comments";
+        var response = Map.of("content", "Respuesta concurrente", "parentId", rootId);
+        assertThat(runTogether(() -> status(HttpMethod.POST, comments, reader.token(), response),
+                () -> status(HttpMethod.POST, comments, reader.token(), response))).containsExactly(201, 201);
+        assertThat(count("SELECT conteo_comentarios FROM publicaciones WHERE id=?", postId)).isEqualTo(4);
+
+        doThrow(new DataIntegrityViolationException("Synthetic notification failure"))
+                .when(notifications).save(any(co.edu.umb.foodies.backend.model.Notification.class));
+        try {
+            assertThat(status(HttpMethod.POST, comments, reader.token(), response)).isEqualTo(503);
+        } finally {
+            reset(notifications);
+        }
+        assertThat(count("SELECT conteo_comentarios FROM publicaciones WHERE id=?", postId)).isEqualTo(4);
+
+        String like = "/api/v1/posts/" + postId + "/like";
+        assertThat(runTogether(() -> status(HttpMethod.POST, like, reader.token(), null),
+                () -> status(HttpMethod.POST, like, reader.token(), null))).containsExactly(200, 200);
+        assertThat(count("SELECT COUNT(*) FROM likes WHERE publicacion_id=?", postId)).isZero();
+        assertThat(count("SELECT conteo_likes FROM publicaciones WHERE id=?", postId)).isZero();
+        assertThat(status(HttpMethod.POST, like, reader.token(), null)).isEqualTo(200);
+
+        assertThat(status(HttpMethod.DELETE, "/api/v1/posts/" + postId, author.token(), null)).isEqualTo(204);
+        assertThat(status(HttpMethod.GET, "/api/v1/posts/" + postId + "/comments", author.token(), null)).isEqualTo(404);
+        assertThat(count("SELECT COUNT(*) FROM likes WHERE publicacion_id=?", postId)).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM comentarios WHERE publicacion_id=?", postId)).isEqualTo(4);
+    }
+
+    @Test
+    void restaurantLifecyclePreservesReservationsAndAnalyticsAndRevokesAccounts() {
+        RegisteredUser customer = registerAndVerify("guest", "foodie");
+        RegisteredUser first = restaurantOwner("ownerone");
+        RegisteredUser second = restaurantOwner("ownertwo");
+        Employee admin = createEmployee("admin_sistema", true);
+        String adminToken = login(admin.getEmail());
+        String name = unique("Local");
+        Map<String, Object> restaurantBody = Map.of("name", name, "address", "Dirección sintética",
+                "category", "Prueba", "ownerId", second.userId(), "status", "activo");
+        String restaurantsRoute = "/api/v1/restaurants";
+        assertThat(status(HttpMethod.POST, restaurantsRoute, customer.token(), restaurantBody)).isEqualTo(403);
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO restaurantes (owner_id,nombre,direccion,ciudad,categoria)
+                VALUES (?, 'Prueba', 'Dirección', 'Bogotá', 'Prueba')
+                """, customer.userId())).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO restaurantes (owner_id,nombre,direccion,ciudad,categoria)
+                VALUES (?, 'Prueba', 'Dirección', 'Bogotá', 'Prueba')
+                """, UUID.randomUUID().toString())).isInstanceOf(DataIntegrityViolationException.class);
+
+        var firstResponse = http.exchange(restaurantsRoute, HttpMethod.POST,
+                new HttpEntity<>(restaurantBody, headers(first.token())), Map.class);
+        assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(firstResponse.getBody()).containsEntry("ownerId", first.userId()).containsEntry("status", "pendiente");
+        String id = (String) firstResponse.getBody().get("id");
+        String route = restaurantsRoute + "/" + id;
+        assertThat(status(HttpMethod.POST, restaurantsRoute, first.token(), restaurantBody)).isEqualTo(201);
+        assertThat(count("SELECT COUNT(*) FROM restaurantes WHERE owner_id=?", first.userId())).isEqualTo(2);
+        assertThat(status(HttpMethod.PUT, route, second.token(), Map.of("name", "Intruso"))).isEqualTo(403);
+        assertThat(status(HttpMethod.POST, route + "/menu", second.token(), Map.of("name", "Intruso"))).isEqualTo(403);
+        assertThat(status(HttpMethod.PUT, route + "/status", first.token(), Map.of("status", "activo"))).isEqualTo(403);
+        assertThat(status(HttpMethod.PUT, route + "/status", adminToken, Map.of("status", "activo"))).isEqualTo(200);
+        assertThat(count("SELECT COUNT(*) FROM restaurantes WHERE id=? AND aprobado_por=?", id, admin.getId())).isEqualTo(1);
+        assertThat(status(HttpMethod.POST, route + "/menu", first.token(), Map.of("name", "Plato", "price", 12))).isEqualTo(201);
+
+        PostDTO review = postService.createPost(PostDTO.builder()
+                .restaurantId(id).restaurantName("Nombre sustituido por el cliente").content("Reseña").build(),
+                customer.userId());
+        assertThat(review.getRestaurantId()).isEqualTo(id);
+
+        var reservation = Map.of("restaurantId", id, "numPersonas", 2,
+                "fechaReserva", java.time.LocalDate.now().plusDays(2).toString(), "horaReserva", "12:00:00");
+        assertThat(status(HttpMethod.POST, "/api/v1/reservations", customer.token(), reservation)).isEqualTo(201);
+        jdbc.update("INSERT INTO analiticas_restaurante (restaurante_id, fecha) VALUES (?,CURRENT_DATE)", id);
+        jdbc.update("INSERT INTO horarios_restaurante (restaurante_id,dia_semana) VALUES (?,0)", id);
+        jdbc.update("INSERT INTO promociones_restaurante (restaurante_id,titulo,valor_descuento,fecha_inicio,fecha_fin) VALUES (?,'Fixture',1,CURRENT_DATE,CURRENT_DATE)", id);
+        jdbc.update("INSERT INTO imagenes_restaurante (restaurante_id,cliente_id,url) VALUES (?,?,'https://example.test/img.png')",
+                id, first.userId());
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO reportes_contenido (reporter_id,tipo_contenido,contenido_id,motivo)
+                VALUES (?, 'restaurante', ?, 'Fixture')
+                """, customer.userId(), UUID.randomUUID().toString())).isInstanceOf(DataIntegrityViolationException.class);
+        jdbc.update("INSERT INTO cliente_restaurante_favorito (cliente_id,restaurante_id) VALUES (?,?)", customer.userId(), id);
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO cliente_restaurante_favorito (cliente_id,restaurante_id) VALUES (?,?)",
+                customer.userId(), id)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(jdbc.update("DELETE FROM cliente_restaurante_favorito WHERE cliente_id=? AND restaurante_id=?",
+                customer.userId(), id)).isEqualTo(1);
+        assertThat(status(HttpMethod.DELETE, route, second.token(), null)).isEqualTo(403);
+        assertThat(status(HttpMethod.DELETE, route, first.token(), null)).isEqualTo(204);
+        assertThat(status(HttpMethod.GET, route, null, null)).isEqualTo(404);
+        assertThat(count("SELECT COUNT(*) FROM publicaciones WHERE id=? AND restaurante_id=?",
+                review.getId(), id)).isEqualTo(1);
+        assertThat(status(HttpMethod.POST, "/api/v1/posts", customer.token(),
+                Map.of("restaurantId", id, "content", "Reseña posterior a baja"))).isEqualTo(404);
+        assertThat(status(HttpMethod.POST, "/api/v1/reservations", customer.token(), reservation)).isEqualTo(409);
+        assertThat(status(HttpMethod.PUT, route + "/status", adminToken, Map.of("status", "activo"))).isEqualTo(409);
+        for (String table : List.of("reservas", "analiticas_restaurante", "menu_restaurante",
+                "horarios_restaurante", "promociones_restaurante", "imagenes_restaurante")) {
+            assertThat(count("SELECT COUNT(*) FROM " + table + " WHERE restaurante_id=?", id)).as(table).isEqualTo(1);
+        }
+
+        assertThat(status(HttpMethod.DELETE, "/api/v1/users/" + customer.userId(), adminToken, null)).isEqualTo(204);
+        assertThat(currentUser(customer.token()).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(count("SELECT COUNT(*) FROM clientes WHERE id=? AND NOT is_active", customer.userId())).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM account_identity_registry WHERE identity_id=?", customer.userId())).isEqualTo(1);
+
+        jdbc.update("UPDATE empleados SET is_active=FALSE WHERE id=?", admin.getId());
+        assertThat(count("SELECT COUNT(*) FROM sesiones_empleado WHERE empleado_id=? AND activa", admin.getId())).isZero();
+        assertThat(currentUser(adminToken).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    private RegisteredUser restaurantOwner(String prefix) {
+        RegisteredUser user = registerAndVerify(prefix, "restaurant_admin");
+        jdbc.update("UPDATE clientes SET rol='restaurant_admin' WHERE id=?", user.userId());
+        return new RegisteredUser(user.email(), user.username(), user.userId(), login(user.email()));
+    }
+
+    private String login(String email) {
+        var response = http.postForEntity("/api/v1/auth/login",
+                Map.of("email", email, "password", "V32-safe-test-password"), AuthResponse.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return response.getBody().getToken();
+    }
+
+    private int count(String sql, Object... arguments) {
+        return jdbc.queryForObject(sql, Integer.class, arguments);
+    }
+
+    private int status(HttpMethod method, String route, String token, Object body) {
+        return http.exchange(route, method, new HttpEntity<>(body, headers(token)), String.class).getStatusCode().value();
+    }
+
     private void assertEmployeeCanCompleteVerification(String role) {
         Employee employee = createEmployee(role, false);
         RegistrationResponse challenge = http.postForEntity("/api/v1/auth/email/verification",
@@ -500,9 +682,11 @@ class SessionMySqlTest {
                 .isActive(true)
                 .emailVerified(verified)
                 .build();
-        employee = employees.saveAndFlush(employee);
-        identities.register("employee", employee.getId(), employee.getEmail(), employee.getUsername());
-        return employee;
+        return transaction.execute(ignored -> {
+            Employee saved = employees.saveAndFlush(employee);
+            identities.register("employee", saved.getId(), saved.getEmail(), saved.getUsername());
+            return saved;
+        });
     }
 
     private RegisteredUser registerAndVerify(String prefix, String role) {

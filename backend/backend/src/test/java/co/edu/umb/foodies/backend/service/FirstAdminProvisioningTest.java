@@ -40,7 +40,9 @@ class FirstAdminProvisioningTest {
                     .register(eq("employee"), anyString(), eq("admin@example.test"), eq("admin.fixture"));
             assertThatThrownBy(() -> provisioning.create(identity, password))
                     .isInstanceOf(ResponseStatusException.class);
-            verify(employees, times(1)).saveAndFlush(any());
+            // The account row is flushed before the registry checks its existence. The enclosing
+            // transaction rolls both back on identity collision (verified with MySQL fixtures).
+            verify(employees, times(2)).saveAndFlush(any());
         }
     }
 }

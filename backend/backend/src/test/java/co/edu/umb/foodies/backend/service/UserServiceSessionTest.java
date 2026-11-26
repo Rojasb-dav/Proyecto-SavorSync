@@ -4,6 +4,8 @@ import co.edu.umb.foodies.backend.model.ClientSession;
 import co.edu.umb.foodies.backend.model.User;
 import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
+import co.edu.umb.foodies.backend.repository.FollowRepository;
+import co.edu.umb.foodies.backend.repository.RestaurantRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,13 +32,15 @@ class UserServiceSessionTest {
     @Mock private ClientSessionRepository clientSessionRepository;
     @Mock private AccountIdentityRegistry identities;
     @Mock private CloudinaryAssetRegistry assetRegistry;
+    @Mock private FollowRepository follows;
+    @Mock private RestaurantRepository restaurants;
 
     private UserService service;
     private User target;
 
     @BeforeEach
     void setUp() {
-        service = new UserService(users, notificationRepository, clientSessionRepository, identities, assetRegistry);
+        service = new UserService(users, notificationRepository, clientSessionRepository, identities, assetRegistry, follows, restaurants);
         target = User.builder()
                 .id(UUID.randomUUID().toString())
                 .role(User.Role.foodie)
@@ -52,6 +56,7 @@ class UserServiceSessionTest {
         service.toggleUserStatus(target.getId());
 
         assertThat(target.getIsActive()).isFalse();
+        verify(restaurants).suspendOwnedRestaurants(target.getId());
         verify(clientSessionRepository).revokeActiveByUserId(target.getId());
     }
 }

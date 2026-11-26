@@ -21,6 +21,10 @@ public class PostImage {
     @Column(name = "publicacion_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String postId;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "publicacion_id", insertable = false, updatable = false)
+    private Post post;
+
     @Column(name = "cliente_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
     private String clientId;
 

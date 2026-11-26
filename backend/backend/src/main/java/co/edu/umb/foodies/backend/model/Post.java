@@ -24,7 +24,7 @@ public class Post {
     @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "cliente_id", nullable = false, columnDefinition = "CHAR(36)")
     private User user;
 
@@ -34,7 +34,7 @@ public class Post {
     @Column(columnDefinition = "TEXT", nullable = false)
     private String contenido;
 
-    @Column(name = "calificacion", nullable = false, columnDefinition = "TINYINT")
+    @Column(name = "calificacion", columnDefinition = "TINYINT")
     private Double rating;
 
     @Column(name = "conteo_likes")
@@ -61,10 +61,13 @@ public class Post {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "postId", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "post", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
     @Builder.Default
     private List<PostImage> images = new ArrayList<>();
 

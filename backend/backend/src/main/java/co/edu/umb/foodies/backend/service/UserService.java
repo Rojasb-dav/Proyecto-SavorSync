@@ -2,9 +2,12 @@ package co.edu.umb.foodies.backend.service;
 
 import co.edu.umb.foodies.backend.dto.request.UpdateProfileRequest;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
+import co.edu.umb.foodies.backend.model.Follow;
 import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.User;
 import co.edu.umb.foodies.backend.repository.ClientSessionRepository;
+import co.edu.umb.foodies.backend.repository.FollowRepository;
+import co.edu.umb.foodies.backend.repository.RestaurantRepository;
 import co.edu.umb.foodies.backend.repository.NotificationRepository;
 import co.edu.umb.foodies.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,10 +29,12 @@ public class UserService {
     private final ClientSessionRepository clientSessionRepository;
     private final AccountIdentityRegistry identities;
     private final CloudinaryAssetRegistry assetRegistry;
+    private final FollowRepository follows;
+    private final RestaurantRepository restaurants;
 
     public List<UserResponse> getAllUsers(String authUserId) {
         return userRepository.findAll().stream()
-                .map(u -> UserResponse.fromPublic(u, authUserId))
+                .map(u -> publicResponse(u, authUserId))
                 .toList();
     }
 
@@ -39,7 +43,7 @@ public class UserService {
                 .filter(found -> Boolean.TRUE.equals(found.getIsActive())
                         || id.equals(authUserId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return UserResponse.fromPublic(user, authUserId);
+        return publicResponse(user, authUserId);
     }
 
     public UserResponse getByUsername(String username, String authUserId) {
@@ -47,7 +51,7 @@ public class UserService {
                 .filter(found -> Boolean.TRUE.equals(found.getIsActive())
                         || found.getId().equals(authUserId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return UserResponse.fromPublic(user, authUserId);
+        return publicResponse(user, authUserId);
     }
 
     @Transactional
@@ -55,8 +59,7 @@ public class UserService {
         if (!authUserId.equals(targetId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No puedes modificar este perfil");
         }
-        User user = userRepository.findByIdForUpdate(targetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        User user = lockActiveUser(targetId);
 
         if (req.getFullName() != null) user.setFullName(req.getFullName());
         if (req.getBio() != null) user.setBio(req.getBio());
@@ -120,69 +123,74 @@ public class UserService {
         user.setIsActive(activating);
         User saved = userRepository.save(user);
         if (!activating) {
-            clientSessionRepository.revokeActiveByUserId(saved.getId());
+            revokeClientAccess(saved.getId());
         }
         return UserResponse.fromPublic(saved, null);
     }
 
     @Transactional
     public void deleteUser(String targetId) {
-        clientSessionRepository.revokeActiveByUserId(targetId);
-        userRepository.deleteById(targetId);
-        identities.delete("client", targetId);
+        User user = userRepository.findByIdForUpdate(targetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+        user.setIsActive(false);
+        revokeClientAccess(targetId);
+    }
+
+    private void revokeClientAccess(String userId) {
+        restaurants.suspendOwnedRestaurants(userId);
+        clientSessionRepository.revokeActiveByUserId(userId);
     }
 
     @Transactional
     public void follow(String followerId, String followingId) {
-        if (followerId == null || followingId == null || followerId.equals(followingId)) return;
-        User follower = userRepository.findById(followerId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Seguidor no encontrado"));
-        User following = userRepository.findById(followingId)
-                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario a seguir no encontrado"));
+        if (followerId == null || followingId == null || followerId.equalsIgnoreCase(followingId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No puedes seguir esta cuenta");
+        }
+        // Acquire both account locks in a stable order, including reciprocal follows.
+        boolean followerFirst = followerId.compareToIgnoreCase(followingId) < 0;
+        User first = lockActiveUser(followerFirst ? followerId : followingId);
+        User second = lockActiveUser(followerFirst ? followingId : followerId);
+        User follower = followerFirst ? first : second;
+        User followed = followerFirst ? second : first;
         requireFoodie(follower);
 
-        if (follower.getFollowing() == null) {
-            follower.setFollowing(new HashSet<>());
-        }
+        if (follows.findPairForUpdate(follower.getId(), followed.getId()).isPresent()) return;
 
-        if (!follower.getFollowing().contains(following)) {
-            follower.getFollowing().add(following);
-            userRepository.save(follower);
-
-            try {
-                notificationRepository.save(Notification.builder()
-                        .id(UUID.randomUUID().toString())
-                        .clienteId(followingId)
-                        .type(Notification.NotificationType.seguidor)
-                        .title("¡Tienes un nuevo seguidor! 👥")
-                        .body("@" + follower.getUsername() + " ha comenzado a seguirte en SavorSync.")
-                        .read(false)
-                        .channel(Notification.Channel.in_app)
-                        .createdAt(LocalDateTime.now())
-                        .build());
-            } catch (Exception e) {
-                System.err.println("WARN: Fallo al notificar Follow: " + e.getMessage());
-            }
-        }
+        follows.save(new Follow(follower, followed));
+        notificationRepository.save(Notification.builder()
+                .id(UUID.randomUUID().toString())
+                .clienteId(followed.getId())
+                .type(Notification.NotificationType.seguidor)
+                .title("¡Tienes un nuevo seguidor! 👥")
+                .body("@" + follower.getUsername() + " ha comenzado a seguirte en SavorSync.")
+                .read(false)
+                .channel(Notification.Channel.in_app)
+                .createdAt(LocalDateTime.now())
+                .build());
     }
 
     private static void requireFoodie(User user) {
-        if (user.getRole() != User.Role.foodie) {
+        if (user.getRole() != User.Role.foodie || !Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Esta operación está disponible para cuentas Foodie.");
+                    "Esta operación está disponible para cuentas Foodie verificadas.");
         }
     }
 
     @Transactional
     public void unfollow(String followerId, String followingId) {
-        if (followerId == null || followingId == null) return;
-        User follower = userRepository.findById(followerId).orElse(null);
-        User following = userRepository.findById(followingId).orElse(null);
-        if (follower != null && following != null && follower.getFollowing() != null) {
-            requireFoodie(follower);
-            follower.getFollowing().remove(following);
-            userRepository.save(follower);
-        }
+        User follower = lockActiveUser(followerId);
+        requireFoodie(follower);
+        follows.deletePair(follower.getId(), followingId);
+    }
+
+    private User lockActiveUser(String id) {
+        return userRepository.findByIdForUpdate(id)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+    }
+
+    private UserResponse publicResponse(User user, String viewerId) {
+        Boolean following = viewerId == null ? null : follows.existsByFollowerIdAndFollowedId(viewerId, user.getId());
+        return UserResponse.fromPublic(user, viewerId, following);
     }
 }

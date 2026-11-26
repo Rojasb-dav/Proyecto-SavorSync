@@ -1,6 +1,9 @@
 package co.edu.umb.foodies.backend.service;
 
 import co.edu.umb.foodies.backend.dto.PostDTO;
+import co.edu.umb.foodies.backend.dto.CommentDTO;
+import co.edu.umb.foodies.backend.model.Comment;
+import co.edu.umb.foodies.backend.repository.CommentRepository;
 import co.edu.umb.foodies.backend.model.Like;
 import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.Post;
@@ -21,6 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -34,6 +38,7 @@ public class PostService {
     private final NotificationRepository notificationRepository;
     private final LikeRepository likeRepository;
     private final CloudinaryAssetRegistry assetRegistry;
+    private final CommentRepository comments;
 
     @Transactional(readOnly = true)
     public List<PostDTO> getAllPosts(String currentUserId) {
@@ -58,21 +63,12 @@ public class PostService {
         if (targetUserId == null || targetUserId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Debes iniciar sesión");
         }
-        String finalUserId = targetUserId;
-        User user = userRepository.findById(finalUserId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        requireFoodie(user);
+        User user = requireFoodieForUpdate(targetUserId);
+        String restaurantId = resolveRestaurantId(dto);
 
-        String restaurantId = null;
-        if (dto.getRestaurantName() != null) {
-            // Buscamos un restaurante por nombre para el demo
-            Restaurant rest = restaurantRepository.findAll().stream()
-                .filter(r -> r.getName().equalsIgnoreCase(dto.getRestaurantName())
-                        && r.getStatus() == Restaurant.RestaurantStatus.activo)
-                .findFirst().orElse(null);
-            if (rest != null) {
-                restaurantId = rest.getId();
-            }
+        Double rating = dto.getRating();
+        if (rating != null && (!Double.isFinite(rating) || rating < 1 || rating > 5 || rating != Math.rint(rating))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La calificación debe ser un entero de 1 a 5");
         }
 
         Post post = Post.builder()
@@ -93,6 +89,7 @@ public class PostService {
             PostImage img = PostImage.builder()
                 .id(UUID.randomUUID().toString())
                 .postId(post.getId())
+                    .post(post)
                 .clientId(user.getId())
                 .url(dto.getImageUrl())
                 .orderIndex(0)
@@ -103,31 +100,58 @@ public class PostService {
             post.setImages(new ArrayList<>());
         }
 
+        post = postRepository.saveAndFlush(post);
         if (dto.getImageUrl() != null && !dto.getImageUrl().isBlank()
-                && !assetRegistry.attachIfOwned("client", finalUserId, dto.getImageUrl(), "post", post.getId())) {
+                && !assetRegistry.attachIfOwned("client", user.getId(), dto.getImageUrl(), "post", post.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "La imagen no pertenece a tu cuenta o ya está asociada a otro recurso.");
         }
 
-        post = postRepository.save(post);
-        return convertToDTO(post, finalUserId);
+        return convertToDTO(post, user.getId());
+    }
+
+    private String resolveRestaurantId(PostDTO dto) {
+        if (dto.getRestaurantId() != null && !dto.getRestaurantId().isBlank()) {
+            return restaurantRepository.findByIdForUpdate(dto.getRestaurantId())
+                    .filter(restaurant -> restaurant.getStatus() == Restaurant.RestaurantStatus.activo
+                            && restaurant.getDeactivatedAt() == null)
+                    .map(Restaurant::getId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Restaurante no encontrado o no disponible"));
+        }
+        if (dto.getRestaurantName() == null) return null;
+        List<String> candidates = restaurantRepository.findActiveIdsByNameForUpdate(dto.getRestaurantName());
+        return candidates.size() == 1 ? candidates.get(0) : null;
     }
 
     @Transactional(readOnly = true)
-    public void requireVisiblePost(String postId, String viewerId) {
+    public List<CommentDTO> getComments(String postId, String viewerId) {
+        requireVisiblePost(postId, viewerId);
+        return comments.findByPostId(postId).stream()
+                .filter(comment -> "activo".equals(comment.getStatus()))
+                .map(comment -> userRepository.findById(comment.getClienteId())
+                        .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                        .map(user -> CommentDTO.from(comment, user)).orElse(null))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private void requireVisiblePost(String postId, String viewerId) {
         if (postRepository.countVisiblePost(postId, viewerId, Post.PostStatus.publicada) == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada");
         }
     }
 
-    private static void requireFoodie(User user) {
-        if (user.getRole() != User.Role.foodie) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Esta operación está disponible para cuentas Foodie.");
-        }
+    private User requireFoodieForUpdate(String userId) {
+        return userRepository.findByIdForUpdate(userId)
+                .filter(user -> user.getRole() == User.Role.foodie && Boolean.TRUE.equals(user.getIsActive())
+                        && Boolean.TRUE.equals(user.getEmailVerified()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Esta operación está disponible para cuentas Foodie verificadas."));
     }
 
     private boolean canView(Post post, String viewerId) {
+        if (post.getDeletedAt() != null) return false;
         User author = post.getUser();
         if (author == null || !Boolean.TRUE.equals(author.getIsActive())
                 || !Boolean.TRUE.equals(author.getEmailVerified())) {
@@ -139,13 +163,10 @@ public class PostService {
 
     @Transactional
     public void toggleLike(String postId, String userId) {
-        Post post = postRepository.findById(postId).filter(p -> canView(p, userId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        requireFoodie(user);
+        User user = requireFoodieForUpdate(userId);
+        Post post = lockVisiblePost(postId, userId);
 
-        boolean exists = likeRepository.existsByPostIdAndClienteId(postId, userId);
+        boolean exists = likeRepository.findIdForUpdate(postId, userId).isPresent();
         if (exists) {
             likeRepository.deleteByPostIdAndClienteId(postId, userId);
         } else {
@@ -157,40 +178,81 @@ public class PostService {
                     .build();
             likeRepository.save(like);
 
-            if (post.getUser() != null && !post.getUser().getId().equals(userId)) {
-                try {
-                    Restaurant rest = post.getRestaurantId() != null ? restaurantRepository.findById(post.getRestaurantId()).orElse(null) : null;
-                    String restName = rest != null ? rest.getName() : "un restaurante";
-                    notificationRepository.save(Notification.builder()
-                            .id(UUID.randomUUID().toString())
-                            .clienteId(post.getUser().getId())
-                            .type(Notification.NotificationType.like)
-                            .title("¡A alguien le gusta tu reseña! ❤️")
-                            .body("@" + user.getUsername() + " le ha dado Me Gusta a tu reseña sobre " + restName)
-                            .read(false)
-                            .channel(Notification.Channel.in_app)
-                            .createdAt(LocalDateTime.now())
-                            .build());
-                } catch (Exception e) {
-                    System.err.println("WARN: Fallo al notificar Like: " + e.getMessage());
-                }
+            if (!post.getUser().getId().equals(userId)) {
+                notifyAuthor(post, Notification.NotificationType.like, "Nuevo Me Gusta en tu reseña",
+                        "@" + user.getUsername() + " le ha dado Me Gusta a tu reseña.");
             }
         }
-        int newLikesCount = (int) likeRepository.countByPostId(postId);
-        post.setLikesCount(newLikesCount);
-        postRepository.save(post);
+        // The post lock serializes deltas, independently of the transaction's read snapshot.
+        int previous = post.getLikesCount() == null ? 0 : post.getLikesCount();
+        post.setLikesCount(exists ? Math.max(0, previous - 1) : previous + 1);
+    }
+
+    @Transactional
+    public CommentDTO addComment(String postId, String userId, String content, String parentId) {
+        if (content.isBlank() || content.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El comentario debe contener entre 1 y 200 caracteres.");
+        }
+        User author = requireFoodieForUpdate(userId);
+        Post post = lockVisiblePost(postId, userId);
+        if (parentId != null && comments.findById(parentId)
+                .filter(parent -> postId.equals(parent.getPostId()) && "activo".equals(parent.getStatus()))
+                .isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El comentario padre no pertenece a esta publicación o no está disponible.");
+        }
+
+        Comment saved = comments.save(Comment.builder()
+                .id(UUID.randomUUID().toString())
+                .postId(postId)
+                .clienteId(author.getId())
+                .parentId(parentId)
+                .content(content)
+                .status("activo")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build());
+        post.setCommentsCount((post.getCommentsCount() == null ? 0 : post.getCommentsCount()) + 1);
+        if (!post.getUser().getId().equals(userId)) {
+            notifyAuthor(post, Notification.NotificationType.comentario, "Nuevo comentario en tu reseña",
+                    "@" + author.getUsername() + " comentó: \"" + content + "\"");
+        }
+        return CommentDTO.from(saved, author);
+    }
+
+    private void notifyAuthor(Post post, Notification.NotificationType type, String title, String body) {
+        notificationRepository.save(Notification.builder()
+                .id(UUID.randomUUID().toString())
+                .clienteId(post.getUser().getId())
+                .type(type)
+                .title(title)
+                .body(body)
+                .read(false)
+                .channel(Notification.Channel.in_app)
+                .createdAt(LocalDateTime.now())
+                .build());
+    }
+
+    private Post lockVisiblePost(String postId, String viewerId) {
+        return postRepository.findByIdForUpdate(postId).filter(post -> canView(post, viewerId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
     }
 
     @Transactional
     public void deletePost(String postId, String userId) {
-        Post post = postRepository.findById(postId)
+        requireFoodieForUpdate(userId);
+        Post post = postRepository.findByIdForUpdate(postId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
-        
+
         if (!post.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes permiso para eliminar esta publicación");
         }
-        likeRepository.deleteByPostIdAndClienteId(postId, userId);
-        postRepository.delete(post);
+        if (post.getDeletedAt() == null) {
+            post.setDeletedAt(LocalDateTime.now());
+            post.setIsPublic(false);
+            post.setStatus(Post.PostStatus.oculta);
+        }
     }
 
     private PostDTO convertToDTO(Post post, String currentUserId) {
@@ -212,6 +274,7 @@ public class PostService {
                 .username(post.getUser() != null ? post.getUser().getUsername() : "")
                 .fullName(post.getUser() != null ? post.getUser().getFullName() : "")
                 .userAvatarUrl(post.getUser() != null ? post.getUser().getAvatarUrl() : null)
+                .restaurantId(rest != null ? rest.getId() : null)
                 .restaurantName(rest != null ? rest.getName() : null)
                 .restaurantAddress(rest != null ? rest.getAddress() : null)
                 .content(post.getContenido())

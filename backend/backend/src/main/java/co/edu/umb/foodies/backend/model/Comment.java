@@ -30,7 +30,7 @@ public class Comment {
 
     @JsonProperty("postId")
     @JsonAlias({"publicacion_id", "postId", "post_id"})
-    @Column(name = "publicacion_id", length = 36, columnDefinition = "CHAR(36)", nullable = false)
+    @Column(name = "publicacion_id", length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String postId;
 
     @JsonProperty("clienteId")
@@ -40,7 +40,7 @@ public class Comment {
 
     @JsonProperty("parentId")
     @JsonAlias({"parent_id", "parentId"})
-    @Column(name = "parent_id", length = 36, columnDefinition = "CHAR(36)")
+    @Column(name = "parent_id", length = 36, columnDefinition = "CHAR(36)", updatable = false)
     private String parentId;
 
     @JsonProperty("content")

@@ -30,6 +30,7 @@ class MysqlPartialSchemaV33Test {
         seed(source);
         migrate(target);
         copy(source, target);
+        upgrade(target);
 
         try (Connection connection = connect(target); Statement sql = connection.createStatement()) {
             assertThat(number(sql, "SELECT COUNT(*) FROM clientes")).isEqualTo(2);
@@ -199,6 +200,45 @@ class MysqlPartialSchemaV33Test {
         }
     }
 
+    @Test
+    void installsFreshMysql84AndRejectsCyclicV5DataBeforeChangingTables() throws Exception {
+        String empty = createSchema("v34_fresh");
+        var fresh = Flyway.configure().dataSource(SERVER + empty + OPTIONS, "root", password())
+                .locations("classpath:db/migration").load();
+        assertThat(fresh.migrate().migrationsExecuted).isEqualTo(6);
+        assertThat(fresh.migrate().migrationsExecuted).isZero();
+        fresh.validate();
+
+        String legacy = createSchema("v34_cycle");
+        migrate(legacy);
+        try (Connection connection = connect(legacy); Statement sql = connection.createStatement()) {
+            sql.executeUpdate("""
+                    INSERT INTO clientes (id,email,username,password,full_name)
+                    VALUES ('fixture-author','author@example.test','author','fixture','Synthetic author')
+                    """);
+            sql.executeUpdate("""
+                    INSERT INTO publicaciones (id,cliente_id,contenido)
+                    VALUES ('fixture-post','fixture-author','Synthetic post')
+                    """);
+            sql.executeUpdate("""
+                    INSERT INTO comentarios (id,publicacion_id,cliente_id,contenido)
+                    VALUES ('fixture-cycle','fixture-post','fixture-author','Synthetic comment')
+                    """);
+            sql.executeUpdate("UPDATE comentarios SET parent_id=id WHERE id='fixture-cycle'");
+        }
+        assertThatThrownBy(() -> Flyway.configure()
+                .dataSource(SERVER + legacy + OPTIONS, "root", password())
+                .locations("classpath:db/migration").load().migrate())
+                .hasMessageContaining("v6_integrity_gate");
+        try (Connection connection = connect(legacy); Statement sql = connection.createStatement()) {
+            assertThat(number(sql, """
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_schema=DATABASE() AND table_name='restaurantes' AND column_name='deactivated_at'
+                    """)).isZero();
+            assertThat(number(sql, "SELECT COUNT(*) FROM comentarios WHERE parent_id=id")).isEqualTo(1);
+        }
+    }
+
     private static String createSchema(String purpose) throws Exception {
         String schema = "savorsync_v33_" + purpose + "_" + UUID.randomUUID().toString().substring(0, 8);
         try (Connection connection = connect("mysql"); Statement sql = connection.createStatement()) {
@@ -215,8 +255,16 @@ class MysqlPartialSchemaV33Test {
 
     private static void migrate(String schema) {
         var flyway = Flyway.configure().dataSource(SERVER + schema + OPTIONS, "root", password())
-                .locations("classpath:db/migration").baselineOnMigrate(false).load();
+                .locations("classpath:db/migration").target("5").baselineOnMigrate(false).load();
         assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
+        assertThat(flyway.migrate().migrationsExecuted).isZero();
+        flyway.validate();
+    }
+
+    private static void upgrade(String schema) {
+        var flyway = Flyway.configure().dataSource(SERVER + schema + OPTIONS, "root", password())
+                .locations("classpath:db/migration").load();
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         flyway.validate();
     }

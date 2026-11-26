@@ -2,13 +2,6 @@ package co.edu.umb.foodies.backend.controller;
 
 import co.edu.umb.foodies.backend.dto.CommentDTO;
 import co.edu.umb.foodies.backend.dto.PostDTO;
-import co.edu.umb.foodies.backend.model.Comment;
-import co.edu.umb.foodies.backend.model.Notification;
-import co.edu.umb.foodies.backend.model.User;
-import co.edu.umb.foodies.backend.repository.CommentRepository;
-import co.edu.umb.foodies.backend.repository.NotificationRepository;
-import co.edu.umb.foodies.backend.repository.PostRepository;
-import co.edu.umb.foodies.backend.repository.UserRepository;
 import co.edu.umb.foodies.backend.service.PostService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/posts")
@@ -29,10 +19,6 @@ import java.util.stream.Collectors;
 public class PostController {
 
     private final PostService postService;
-    private final CommentRepository commentRepository;
-    private final NotificationRepository notificationRepository;
-    private final PostRepository postRepository;
-    private final UserRepository userRepository;
 
     @GetMapping
     public ResponseEntity<List<PostDTO>> getAllPosts(HttpServletRequest request) {
@@ -60,82 +46,24 @@ public class PostController {
 
     @GetMapping("/{postId}/comments")
     public ResponseEntity<List<CommentDTO>> getComments(@PathVariable String postId, HttpServletRequest request) {
-        postService.requireVisiblePost(postId, getUserIdFromRequest(request));
-
-        List<Comment> comments = commentRepository.findByPostId(postId);
-        if (comments == null || comments.isEmpty()) {
-            return ResponseEntity.ok(List.of());
-        }
-        List<CommentDTO> dtos = comments.stream()
-                .filter(c -> c != null && "activo".equalsIgnoreCase(c.getStatus()))
-                .map(c -> {
-                    User author = null;
-                    if (c.getClienteId() != null && !c.getClienteId().isBlank()) {
-                        try {
-                            author = userRepository.findById(c.getClienteId()).orElse(null);
-                        } catch (Exception ignored) {}
-                    }
-                    return CommentDTO.from(c, author);
-                })
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(postService.getComments(postId, getUserIdFromRequest(request)));
     }
 
     @PostMapping("/{postId}/comments")
     public ResponseEntity<CommentDTO> addComment(@PathVariable String postId, @RequestBody Map<String, Object> body, HttpServletRequest request) {
         String userId = request.getUserPrincipal().getName();
-        postService.requireVisiblePost(postId, userId);
 
         String content = body.get("content") != null ? body.get("content").toString() : "";
         if (content.isBlank() && body.get("contenido") != null) {
             content = body.get("contenido").toString();
         }
 
-        User author = userRepository.findById(userId).orElse(null);
-        if (author == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Usuario autor no encontrado");
+        String parentId = body.get("parentId") == null ? null : body.get("parentId").toString();
+        if (parentId != null && (parentId.isBlank() || parentId.length() > 36)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Identificador de comentario padre inválido.");
         }
-        if (author.getRole() != User.Role.foodie) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Esta operación está disponible para cuentas Foodie.");
-        }
-        if (content.isBlank() || content.length() > 200) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El comentario debe contener entre 1 y 200 caracteres.");
-        }
-
-        Comment comment = Comment.builder()
-                .id(UUID.randomUUID().toString())
-                .postId(postId)
-                .clienteId(author.getId())
-                .content(content)
-                .status("activo")
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
-
-        Comment savedComment = commentRepository.save(comment);
-
-        try {
-            postRepository.findById(postId).ifPresent(post -> {
-                if (post.getUser() != null && !post.getUser().getId().equals(author.getId())) {
-                    notificationRepository.save(Notification.builder()
-                            .id(UUID.randomUUID().toString())
-                            .clienteId(post.getUser().getId())
-                            .type(Notification.NotificationType.comentario)
-                            .title("Nuevo comentario en tu reseña 💬")
-                            .body("@" + author.getUsername() + " comentó: \"" + savedComment.getContent() + "\"")
-                            .read(false)
-                            .channel(Notification.Channel.in_app)
-                            .createdAt(LocalDateTime.now())
-                            .build());
-                }
-            });
-        } catch (Exception e) {
-            System.err.println("WARN: Fallo al notificar comentario: " + e.getMessage());
-        }
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(CommentDTO.from(savedComment, author));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(postService.addComment(postId, userId, content, parentId));
     }
 
     @PostMapping("/{postId}/like")

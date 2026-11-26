@@ -36,8 +36,8 @@ La carga usa Cloudinary firmado desde el backend y registra el propietario. La a
 | PUT `/users/{id}/avatar` | `{avatarUrl}` | 200 `UserResponse` |
 | PUT `/users/{id}/status` | ID de cliente | 200 `UserResponse` |
 | PUT `/users/{id}/toggle-active` | ID de cliente | 200 `UserResponse` |
-| DELETE `/users/{id}` | ID de cliente | 200 vacío |
-| POST `/follows/{userId}` | ID destino | 200 vacío |
+| DELETE `/users/{id}` | ID de cliente | 204, desactiva la cuenta y revoca sus sesiones |
+| POST `/follows/{userId}` | ID de cuenta activa | 200 idempotente, 400 si es la misma cuenta |
 | DELETE `/follows/{userId}` | ID destino | 200 vacío |
 
 
@@ -47,10 +47,10 @@ La carga usa Cloudinary firmado desde el backend y registra el propietario. La a
 |---|---|---|
 | GET `/posts` | Bearer opcional para personalizar likes | 200 `PostDTO[]` |
 | GET `/posts/user/{userId}` | ID de autor | 200 `PostDTO[]` |
-| POST `/posts` | `PostDTO` | 200 `PostDTO` |
-| DELETE `/posts/{id}` | ID publicación | 200 vacío |
+| POST `/posts` | `PostDTO`, calificación entera entre 1 y 5 y `restaurantId` opcional de un local activo | 201 `PostDTO` |
+| DELETE `/posts/{id}` | ID de publicación propia | 204, oculta y conserva las referencias |
 | GET `/posts/{postId}/comments` | ID publicación | 200 `CommentDTO[]`, 404 |
-| POST `/posts/{postId}/comments` | `content` o `contenido` | 200 `CommentDTO`, 404 |
+| POST `/posts/{postId}/comments` | `content` o `contenido`, `parentId` opcional de la misma publicación | 201 `CommentDTO`, 400 si el padre es inválido, 404 si la publicación no está visible |
 | POST `/posts/{postId}/like` | ID publicación | 200 vacío, 404 |
 
 
@@ -60,11 +60,11 @@ La carga usa Cloudinary firmado desde el backend y registra el propietario. La a
 |---|---|---|
 | GET `/restaurants` | Bearer opcional | 200 `Restaurant[]` |
 | GET `/restaurants/{id}` | ID restaurante | 200 `Restaurant`, 404 |
-| POST `/restaurants` | Entidad `Restaurant` | 200 `Restaurant` |
+| POST `/restaurants` | Nombre, dirección, categoría y campos descriptivos | 201 `Restaurant` en estado pendiente, propietario derivado de la sesión |
 | PUT `/restaurants/{id}/status` | Entidad `Restaurant` con `status` | 200 `Restaurant` |
-| DELETE `/restaurants/{id}` | ID restaurante | 200 vacío |
+| DELETE `/restaurants/{id}` | ID de restaurante propio o supervisado por Admin sistema | 204, desactiva y conserva las dependencias |
 | GET `/restaurants/{id}/menu` | ID restaurante | 200 `MenuItem[]` |
-| POST `/restaurants/{id}/menu` | Entidad `MenuItem` | 200 `MenuItem` |
+| POST `/restaurants/{id}/menu` | Entidad `MenuItem` | 201 `MenuItem` |
 
 
 ### Reservas
@@ -72,8 +72,8 @@ La carga usa Cloudinary firmado desde el backend y registra el propietario. La a
 | Método y ruta | Entrada | Respuesta de éxito declarada |
 |---|---|---|
 | GET `/reservations` | `userId?`, `restaurantId?` | 200 `ReservationDTO[]` |
-| POST `/reservations` | Entidad `Reservation` | 200 `ReservationDTO` |
-| PUT `/reservations/{id}` | `estado` o `status` | 200 `ReservationDTO` |
+| POST `/reservations` | Restaurante, fecha, hora y número de personas | 201 `ReservationDTO`, 400 para entrada inválida, 409 si el local no está activo o el horario no admite la reserva |
+| PUT `/reservations/{id}` | `estado` o `status` | 200 `ReservationDTO`, 400 para estado inválido y 409 para una reserva cerrada |
 
 
 ### PQRS, notificaciones y archivos
@@ -86,7 +86,7 @@ La carga usa Cloudinary firmado desde el backend y registra el propietario. La a
 | GET `/notifications` | `userId?` | 200 `Notification[]` |
 | POST `/notifications` | Entidad `Notification` | 200 `Notification` |
 | PUT `/notifications/{id}/read` | ID notificación | 200 `Notification`, 404 |
-| DELETE `/notifications/{id}` | ID notificación | 200 vacío, 404 |
+| DELETE `/notifications/{id}` | ID notificación | 204, 404 |
 
 Los perfiles ocultan datos de contacto a terceros salvo vistas administrativas autorizadas. Reservas usa los estados `pendiente`, `confirmada`, `cancelada` y `completada`. Los restaurantes usan `pendiente`, `activo` y `suspendido`. PQRS usa `peticion`, `queja`, `reclamo` y `sugerencia`, con estados `recibida`, `en_gestion`, `resuelta` y `cerrada`.
 

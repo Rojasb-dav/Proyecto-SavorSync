@@ -2,6 +2,7 @@ package co.edu.umb.foodies.backend.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,15 @@ public class CloudinaryAssetRegistry {
 
     @Transactional
     public void recordUpload(String ownerType, String ownerId, CloudinaryService.UploadResult upload) {
+        String accountTable = switch (ownerType) {
+            case "client" -> "clientes";
+            case "employee" -> "empleados";
+            default -> throw new DataIntegrityViolationException("Tipo de titular inválido");
+        };
+        if (jdbc.queryForList("SELECT id FROM " + accountTable
+                + " WHERE id = ? AND is_active AND email_verified FOR UPDATE", String.class, ownerId).isEmpty()) {
+            throw new DataIntegrityViolationException("Titular de archivo no disponible");
+        }
         jdbc.update("""
                 INSERT INTO cloudinary_assets
                   (id, owner_type, owner_id, public_id, secure_url)
@@ -36,7 +46,8 @@ public class CloudinaryAssetRegistry {
             String secureUrl,
             String referenceType,
             String referenceId) {
-        if (secureUrl == null || secureUrl.isBlank()) return false;
+        if (secureUrl == null || secureUrl.isBlank() || !"client".equals(ownerType)
+                || !isOwnedReference(ownerId, referenceType, referenceId)) return false;
         int attached = jdbc.update("""
                 UPDATE cloudinary_assets
                 SET attached_at = CURRENT_TIMESTAMP,
@@ -62,5 +73,13 @@ public class CloudinaryAssetRegistry {
                   AND attached_at IS NOT NULL
                 """, new Object[]{ownerType, ownerId, secureUrl, referenceType, referenceId});
         return existing.size() == 1;
+    }
+    private boolean isOwnedReference(String ownerId, String referenceType, String referenceId) {
+        if ("profile".equals(referenceType)) return ownerId.equals(referenceId);
+        if (!"post".equals(referenceType)) return false;
+        return !jdbc.queryForList("""
+                SELECT id FROM publicaciones
+                WHERE id = ? AND cliente_id = ? AND deleted_at IS NULL FOR UPDATE
+                """, String.class, referenceId, ownerId).isEmpty();
     }
 }

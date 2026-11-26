@@ -3,7 +3,6 @@ package co.edu.umb.foodies.backend.security;
 import co.edu.umb.foodies.backend.controller.*;
 import co.edu.umb.foodies.backend.dto.PostDTO;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
-import co.edu.umb.foodies.backend.model.Notification;
 import co.edu.umb.foodies.backend.model.Restaurant;
 import co.edu.umb.foodies.backend.repository.*;
 import co.edu.umb.foodies.backend.security.config.SecurityConfig;
@@ -11,6 +10,7 @@ import co.edu.umb.foodies.backend.security.jwt.JwtAuthenticationFilter;
 import co.edu.umb.foodies.backend.security.jwt.JwtUtil;
 import co.edu.umb.foodies.backend.service.UserService;
 import co.edu.umb.foodies.backend.service.PostService;
+import co.edu.umb.foodies.backend.service.ReservationService;
 import co.edu.umb.foodies.backend.service.CloudinaryAssetRegistry;
 import co.edu.umb.foodies.backend.service.CloudinaryService;
 import org.junit.jupiter.api.Test;
@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest({UserController.class, ReservationController.class, RestaurantController.class,
         PqrsController.class, NotificationController.class, PostController.class, FileController.class})
-@Import({SecurityConfig.class, JwtAuthenticationFilter.class, RestSecurityErrors.class})
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, RestSecurityErrors.class, ReservationService.class})
 class AuthorizationMvcTest {
 
     @Autowired private MockMvc mvc;
@@ -44,6 +44,7 @@ class AuthorizationMvcTest {
     @MockBean private UserRepository users;
     @MockBean private EmployeeRepository employeeRepository;
     @MockBean private ReservationRepository reservations;
+    @MockBean private RestaurantScheduleRepository restaurantSchedules;
     @MockBean private RestaurantRepository restaurants;
     @MockBean private MenuItemRepository menu;
     @MockBean private PqrsRepository pqrs;
@@ -108,6 +109,10 @@ class AuthorizationMvcTest {
     void restaurantQueriesAndMenuWritesRequireOwnership() throws Exception {
         Restaurant other = Restaurant.builder().id("restaurant").ownerId("actual-owner").build();
         when(restaurants.findById("restaurant")).thenReturn(Optional.of(other));
+        when(users.findByIdForUpdate("unrelated-admin")).thenReturn(Optional.of(co.edu.umb.foodies.backend.model.User.builder()
+                .id("unrelated-admin").role(co.edu.umb.foodies.backend.model.User.Role.restaurant_admin)
+                .isActive(true).emailVerified(true).build()));
+        when(restaurants.findByIdForUpdate("restaurant")).thenReturn(Optional.of(other));
         mvc.perform(get("/api/v1/reservations").param("restaurantId", "restaurant")
                         .with(user("unrelated-admin").roles("RESTAURANT_ADMIN"))).andExpect(status().isForbidden());
         mvc.perform(post("/api/v1/restaurants/restaurant/menu").with(user("unrelated-admin").roles("RESTAURANT_ADMIN"))
@@ -134,8 +139,7 @@ class AuthorizationMvcTest {
 
     @Test
     void notificationsCannotBeReadOrMutatedByAnotherAccount() throws Exception {
-        when(notifications.findById("notice")).thenReturn(Optional.of(
-                Notification.builder().id("notice").clienteId("owner").build()));
+        when(notifications.findByIdAndClienteId("notice", "another")).thenReturn(Optional.empty());
         mvc.perform(get("/api/v1/notifications").param("userId", "owner")
                         .with(user("another").roles("FOODIE"))).andExpect(status().isForbidden());
         mvc.perform(put("/api/v1/notifications/notice/read").with(user("another").roles("FOODIE")))
@@ -144,7 +148,7 @@ class AuthorizationMvcTest {
                 .andExpect(status().isNotFound());
         mvc.perform(post("/api/v1/notifications").with(user("another").roles("FOODIE"))
                         .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
-        verify(notifications, times(2)).findById("notice");
+        verify(notifications, times(2)).findByIdAndClienteId("notice", "another");
         verifyNoMoreInteractions(notifications);
     }
 

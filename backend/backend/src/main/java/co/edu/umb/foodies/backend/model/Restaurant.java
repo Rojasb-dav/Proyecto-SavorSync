@@ -2,6 +2,7 @@ package co.edu.umb.foodies.backend.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -17,14 +18,14 @@ import java.util.UUID;
 public class Restaurant {
 
     public enum RestaurantStatus {
-        pendiente, activo, suspendido
+        borrador, pendiente, activo, suspendido
     }
 
     @Id
     @Column(length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String id;
 
-    @Column(name = "owner_id", length = 36, columnDefinition = "CHAR(36)")
+    @Column(name = "owner_id", length = 36, columnDefinition = "CHAR(36)", nullable = false, updatable = false)
     private String ownerId;
 
     @Column(name = "nombre", nullable = false, length = 100)
@@ -33,10 +34,10 @@ public class Restaurant {
     @Column(name = "descripcion", columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "direccion", length = 255)
+    @Column(name = "direccion", length = 255, nullable = false)
     private String address;
 
-    @Column(name = "ciudad", length = 100)
+    @Column(name = "ciudad", length = 100, nullable = false)
     private String city;
 
     @Column(name = "latitud", precision = 10, scale = 8)
@@ -54,7 +55,7 @@ public class Restaurant {
     @Column(name = "sitio_web", length = 255)
     private String website;
 
-    @Column(name = "categoria", length = 50)
+    @Column(name = "categoria", length = 50, nullable = false)
     private String category;
 
     @Column(name = "rango_precio", columnDefinition = "TINYINT")
@@ -70,6 +71,18 @@ public class Restaurant {
     @Column(name = "estado", columnDefinition = "ENUM('borrador','pendiente','activo','suspendido')")
     private RestaurantStatus status;
 
+    @JsonIgnore
+    @Column(name = "deactivated_at")
+    private LocalDateTime deactivatedAt;
+
+    @JsonIgnore
+    @Column(name = "aprobado_por", columnDefinition = "CHAR(36)")
+    private String approvedBy;
+
+    @JsonIgnore
+    @Column(name = "fecha_aprobacion")
+    private LocalDateTime approvedAt;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -83,7 +96,7 @@ public class Restaurant {
         if (priceRange == null) priceRange = 2;
         if (ratingAverage == null) ratingAverage = BigDecimal.valueOf(0.0);
         if (reviewsCount == null) reviewsCount = 0;
-        if (status == null) status = RestaurantStatus.activo;
+        if (status == null) status = RestaurantStatus.borrador;
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;

@@ -61,7 +61,7 @@ public class EmailVerificationService {
                     "Demasiadas solicitudes. Espera antes de intentar nuevamente.");
         }
 
-        challenges.consumeActiveForIdentity(identityId, purpose);
+        challenges.consumeActiveForIdentity(identityId, identityType, purpose);
         String code = String.format(Locale.ROOT, "%06d", RANDOM.nextInt(1_000_000));
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(CODE_TTL_MINUTES);
         PasswordResetToken challenge = challenges.saveAndFlush(PasswordResetToken.builder()

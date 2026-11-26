@@ -31,6 +31,9 @@ public class PostDTO {
     @JsonAlias({"user_avatar_url", "userAvatarUrl", "avatarUrl"})
     private String userAvatarUrl;
 
+    @JsonAlias({"restaurante_id", "restaurant_id"})
+    private String restaurantId;
+
     @JsonProperty("restaurantName")
     @JsonAlias({"nombre_restaurante", "restaurantName", "restaurant_name"})
     private String restaurantName;

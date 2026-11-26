@@ -3,6 +3,7 @@ package co.edu.umb.foodies.backend.service;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
@@ -19,19 +20,29 @@ public class AccountIdentityRegistry {
         this.jdbc = jdbc;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public void register(String identityType, String identityId, String email, String username) {
         register(identityType, identityId, email, username,
                 "client".equals(identityType) ? "foodie" : "employee");
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public void register(
             String identityType,
             String identityId,
             String email,
             String username,
             String requestedRole) {
+        String table = switch (identityType) {
+            case "client" -> "clientes";
+            case "employee" -> "empleados";
+            default -> throw new IllegalArgumentException("Tipo de identidad inválido");
+        };
+        if (jdbc.queryForList("SELECT id FROM " + table
+                + " WHERE id = ? AND LOWER(TRIM(email)) = ? AND LOWER(TRIM(username)) = ?",
+                String.class, identityId, normalize(email), normalize(username)).isEmpty()) {
+            throw new IllegalStateException("La cuenta no corresponde a la identidad registrada.");
+        }
         try {
             jdbc.update("""
                     INSERT INTO account_identity_registry
@@ -95,14 +106,6 @@ public class AccountIdentityRegistry {
                 identityType,
                 identityId);
         return roles.stream().findFirst().orElse(null);
-    }
-
-    @Transactional
-    public void delete(String identityType, String identityId) {
-        jdbc.update("""
-                DELETE FROM account_identity_registry
-                WHERE identity_type = ? AND identity_id = ?
-                """, identityType, identityId);
     }
 
     private static String normalize(String value) {

@@ -23,9 +23,9 @@ class MysqlMigrationValidationTest {
         String user = required("SAVORSYNC_SESSION_MYSQL_USER");
         String password = required("SAVORSYNC_SESSION_MYSQL_PASSWORD");
         String rootPassword = required("SAVORSYNC_SESSION_MYSQL_ROOT_PASSWORD");
-        String rootUrl = originalUrl.replaceFirst("/foodies_db(?:_v32_[a-z0-9_]+)?(?:\\?.*)?$",
+        String rootUrl = originalUrl.replaceFirst("/foodies_db(?:_v(?:32|34)_[a-z0-9_]+)?(?:\\?.*)?$",
                 "/mysql?sslMode=DISABLED&allowPublicKeyRetrieval=true");
-        String freshUrl = originalUrl.replaceFirst("/foodies_db(?:_v32_[a-z0-9_]+)?(?:\\?.*)?$",
+        String freshUrl = originalUrl.replaceFirst("/foodies_db(?:_v(?:32|34)_[a-z0-9_]+)?(?:\\?.*)?$",
                 "/" + FRESH_SCHEMA + "?sslMode=DISABLED&allowPublicKeyRetrieval=true");
 
         boolean previousTrustFunctionCreators;
@@ -51,8 +51,8 @@ class MysqlMigrationValidationTest {
                             "SELECT COUNT(*), SUM(success) FROM " + FRESH_SCHEMA
                                     + ".flyway_schema_history WHERE version IS NOT NULL")) {
                         history.next();
-                        assertThat(history.getInt(1)).isEqualTo(5);
-                        assertThat(history.getInt(2)).isEqualTo(5);
+                        assertThat(history.getInt(1)).isEqualTo(6);
+                        assertThat(history.getInt(2)).isEqualTo(6);
                         alreadyMigrated = true;
                     }
                 }
@@ -104,8 +104,9 @@ class MysqlMigrationValidationTest {
                             + "ON DUPLICATE KEY UPDATE email_normalized = VALUES(email_normalized)");
                 }
             }
-            flyway.migrate();
-            flyway.migrate();
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(alreadyMigrated ? 0 : 2);
+            assertThat(flyway.migrate().migrationsExecuted).isZero();
+            flyway.validate();
         } finally {
             try (Connection root = DriverManager.getConnection(rootUrl, "root", rootPassword);
                  Statement statement = root.createStatement()) {
@@ -127,7 +128,7 @@ class MysqlMigrationValidationTest {
             try (ResultSet triggers = statement.executeQuery(
                     "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = '" + FRESH_SCHEMA + "'")) {
                 triggers.next();
-                assertThat(triggers.getInt(1)).isEqualTo(23);
+                assertThat(triggers.getInt(1)).isEqualTo(31);
             }
             try (ResultSet keys = statement.executeQuery("""
                     SELECT SUM(constraint_type = 'PRIMARY KEY') AS primary_keys,
@@ -137,7 +138,7 @@ class MysqlMigrationValidationTest {
                     """)) {
                 assertThat(keys.next()).isTrue();
                 assertThat(keys.getInt("primary_keys")).isEqualTo(27);
-                assertThat(keys.getInt("foreign_keys")).isEqualTo(32);
+                assertThat(keys.getInt("foreign_keys")).isEqualTo(35);
             }
             try (ResultSet index = statement.executeQuery("""
                     SELECT column_name FROM information_schema.statistics
@@ -181,8 +182,8 @@ class MysqlMigrationValidationTest {
             try (ResultSet history = statement.executeQuery(
                     "SELECT COUNT(*), SUM(success) FROM flyway_schema_history WHERE version IS NOT NULL")) {
                 history.next();
-                assertThat(history.getInt(1)).isEqualTo(5);
-                assertThat(history.getInt(2)).isEqualTo(5);
+                assertThat(history.getInt(1)).isEqualTo(6);
+                assertThat(history.getInt(2)).isEqualTo(6);
             }
         }
     }
