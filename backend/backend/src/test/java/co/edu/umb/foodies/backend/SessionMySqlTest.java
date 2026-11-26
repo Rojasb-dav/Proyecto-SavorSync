@@ -1,6 +1,10 @@
 package co.edu.umb.foodies.backend;
 
+import co.edu.umb.foodies.backend.dto.CommentDTO;
 import co.edu.umb.foodies.backend.dto.PostDTO;
+import co.edu.umb.foodies.backend.dto.ReservationDTO;
+import jakarta.persistence.EntityManagerFactory;
+import org.springframework.core.env.Environment;
 import co.edu.umb.foodies.backend.dto.response.AuthResponse;
 import co.edu.umb.foodies.backend.dto.response.RegistrationResponse;
 import co.edu.umb.foodies.backend.dto.response.UserResponse;
@@ -39,6 +43,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,6 +67,8 @@ class SessionMySqlTest {
     private static final String JWT_SECRET = UUID.randomUUID().toString() + UUID.randomUUID();
 
     @Autowired private TestRestTemplate http;
+    @Autowired private EntityManagerFactory entityManagerFactory;
+    @Autowired private Environment environment;
     @Autowired private org.springframework.transaction.support.TransactionTemplate transaction;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private UserService userService;
@@ -502,6 +512,11 @@ class SessionMySqlTest {
         UserResponse profile = userService.getById(followed.userId(), follower.userId());
         assertThat(profile.getFollowersCount()).isEqualTo(1);
         assertThat(profile.getIsFollowing()).isTrue();
+        var publicProfile = http.exchange("/api/v1/users/" + followed.userId(), HttpMethod.GET,
+                new HttpEntity<>(headers(follower.token())), UserResponse.class);
+        assertThat(publicProfile.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(publicProfile.getBody().getIsFollowing()).isTrue();
+        assertThat(publicProfile.getBody().getEmail()).isNull();
         assertThat(status(HttpMethod.POST, "/api/v1/follows/" + follower.userId(), follower.token(), null)).isEqualTo(400);
         assertThatThrownBy(() -> jdbc.update("INSERT INTO seguidores (seguidor_id, seguido_id) VALUES (?, ?)",
                 follower.userId(), follower.userId())).hasMessageContaining("ck_follow_distinct_accounts");
@@ -554,6 +569,115 @@ class SessionMySqlTest {
     }
 
     @Test
+    void serializesPopulatedFeedAndCommentsWithOpenInViewDisabled() {
+        RegisteredUser author = registerAndVerify("feedAuthor", "foodie");
+        RegisteredUser viewer = registerAndVerify("feedViewer", "foodie");
+        RegisteredUser owner = restaurantOwner("feedOwner");
+        String restaurantId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO restaurantes (id, owner_id, nombre, direccion, ciudad, categoria, estado)
+                VALUES (?, ?, 'Restaurante de prueba', 'Dirección de prueba', 'Bogotá', 'Bistro', 'activo')
+                """, restaurantId, owner.userId());
+        String imageUrl = recordAsset(author.userId(), "feed-primary");
+        String postId = postService.createPost(PostDTO.builder().restaurantId(restaurantId)
+                .content("Primera reseña").imageUrl(imageUrl).rating(4.0).build(), author.userId()).getId();
+        jdbc.update("""
+                INSERT INTO imagenes_publicacion (publicacion_id, cliente_id, url, orden)
+                VALUES (?, ?, 'https://example.test/secondary.png', 1)
+                """, postId, author.userId());
+        String secondPost = postService.createPost(PostDTO.builder().restaurantId(restaurantId)
+                .content("Segunda reseña").build(), author.userId()).getId();
+        String privatePost = postService.createPost(postWithImage(null), author.userId()).getId();
+        jdbc.update("UPDATE publicaciones SET es_publica=false WHERE id=?", privatePost);
+        postService.toggleLike(postId, viewer.userId());
+        jdbc.update("UPDATE publicaciones SET conteo_likes=NULL WHERE id=?", postId);
+        String commentId = postService.addComment(postId, viewer.userId(), "Comentario visible", null).getId();
+        String hiddenComment = postService.addComment(postId, author.userId(), "Comentario oculto", null).getId();
+        jdbc.update("UPDATE comentarios SET estado='oculto' WHERE id=?", hiddenComment);
+
+        assertThat(environment.getProperty("spring.jpa.open-in-view", Boolean.class)).isFalse();
+        var feed = http.getForEntity("/api/v1/posts/user/" + author.userId(), PostDTO[].class);
+        assertThat(feed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(feed.getBody()).extracting(PostDTO::getId).containsExactlyInAnyOrder(postId, secondPost);
+        var authenticated = http.exchange("/api/v1/posts", HttpMethod.GET,
+                new HttpEntity<>(headers(viewer.token())), com.fasterxml.jackson.databind.JsonNode.class);
+        assertThat(authenticated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        var post = authenticated.getBody().findValues("id").stream().anyMatch(id -> id.asText().equals(postId));
+        assertThat(post).isTrue();
+        assertThat(authenticated.getBody().findValuesAsText("id")).doesNotContain(privatePost);
+        for (var row : authenticated.getBody()) {
+            if (row.path("id").asText().equals(postId)) {
+                assertThat(row.path("username").asText()).isEqualTo(author.username());
+                assertThat(row.path("restaurantName").asText()).isEqualTo("Restaurante de prueba");
+                assertThat(row.path("imageUrl").asText()).isEqualTo(imageUrl);
+                assertThat(row.path("likesCount").asInt()).isEqualTo(1);
+                assertThat(row.path("likedByMe").asBoolean()).isTrue();
+                assertThat(row.has("user") || row.has("email") || row.has("password") || row.has("images")).isFalse();
+            }
+        }
+        var ownFeed = http.exchange("/api/v1/posts/user/" + author.userId(), HttpMethod.GET,
+                new HttpEntity<>(headers(author.token())), PostDTO[].class);
+        assertThat(ownFeed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ownFeed.getBody()).extracting(PostDTO::getId).containsExactlyInAnyOrder(postId, secondPost, privatePost);
+
+        var comments = http.getForEntity("/api/v1/posts/" + postId + "/comments", CommentDTO[].class);
+        assertThat(comments.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(comments.getBody()).singleElement().satisfies(comment -> {
+            assertThat(comment.getId()).isEqualTo(commentId);
+            assertThat(comment.getAuthorName()).isEqualTo(viewer.username());
+            assertThat(comment.getContent()).isEqualTo("Comentario visible");
+        });
+        assertThat(http.getForEntity("/api/v1/posts/" + privatePost + "/comments", String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        var sessionFactory = entityManagerFactory.unwrap(org.hibernate.engine.spi.SessionFactoryImplementor.class);
+        assertThat(sessionFactory.getJdbcServices().getDialect()).isInstanceOf(org.hibernate.dialect.MySQLDialect.class);
+        var statistics = sessionFactory.getStatistics();
+        boolean previous = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        try {
+            long before = statistics.getPrepareStatementCount();
+            assertThat(postService.getUserPosts(author.userId(), viewer.userId()))
+                    .extracting(PostDTO::getId).containsExactlyInAnyOrder(postId, secondPost);
+            long statementsForTwoPosts = statistics.getPrepareStatementCount() - before;
+            assertThat(statementsForTwoPosts).isBetween(1L, 5L);
+            for (int i = 0; i < 5; i++) {
+                postService.createPost(PostDTO.builder().restaurantId(restaurantId)
+                        .content("Reseña adicional " + i).build(), author.userId());
+            }
+            before = statistics.getPrepareStatementCount();
+            assertThat(postService.getUserPosts(author.userId(), viewer.userId())).hasSize(7);
+            assertThat(statistics.getPrepareStatementCount() - before).isEqualTo(statementsForTwoPosts);
+        } finally {
+            statistics.setStatisticsEnabled(previous);
+        }
+    }
+
+    @Test
+    void rejectsBcryptPasswordsOverSeventyTwoUtf8BytesForClientsAndStaff() throws Exception {
+        RegisteredUser client = registerAndVerify("bcryptClient", "foodie");
+        Employee employee = createEmployee("admin_sistema", true);
+        String atLimit = "a".repeat(70) + "ñ";
+        String passwordHash = passwordEncoder.encode(atLimit);
+        jdbc.update("UPDATE clientes SET password=? WHERE id=?", passwordHash, client.userId());
+        jdbc.update("UPDATE empleados SET password=? WHERE id=?", passwordHash, employee.getId());
+
+        var clientWithoutChallengeRetry = HttpClient.newHttpClient();
+        var loginUri = URI.create(http.getRootUri() + "/api/v1/auth/login");
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (String email : List.of(client.email(), employee.getEmail())) {
+            assertThat(http.postForEntity("/api/v1/auth/login",
+                    Map.of("email", email, "password", atLimit), AuthResponse.class).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+            var body = json.writeValueAsString(Map.of("email", email, "password", atLimit + "x"));
+            var request = HttpRequest.newBuilder(loginUri).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            assertThat(clientWithoutChallengeRetry.send(request, HttpResponse.BodyHandlers.discarding()).statusCode())
+                    .isEqualTo(401);
+        }
+    }
+
+    @Test
     void restaurantLifecyclePreservesReservationsAndAnalyticsAndRevokesAccounts() {
         RegisteredUser customer = registerAndVerify("guest", "foodie");
         RegisteredUser first = restaurantOwner("ownerone");
@@ -588,6 +712,7 @@ class SessionMySqlTest {
         assertThat(status(HttpMethod.PUT, route + "/status", adminToken, Map.of("status", "activo"))).isEqualTo(200);
         assertThat(count("SELECT COUNT(*) FROM restaurantes WHERE id=? AND aprobado_por=?", id, admin.getId())).isEqualTo(1);
         assertThat(status(HttpMethod.POST, route + "/menu", first.token(), Map.of("name", "Plato", "price", 12))).isEqualTo(201);
+        assertThat(http.getForEntity(route + "/menu", String.class).getBody()).contains("Plato");
 
         PostDTO review = postService.createPost(PostDTO.builder()
                 .restaurantId(id).restaurantName("Nombre sustituido por el cliente").content("Reseña").build(),
@@ -597,6 +722,15 @@ class SessionMySqlTest {
         var reservation = Map.of("restaurantId", id, "numPersonas", 2,
                 "fechaReserva", java.time.LocalDate.now().plusDays(2).toString(), "horaReserva", "12:00:00");
         assertThat(status(HttpMethod.POST, "/api/v1/reservations", customer.token(), reservation)).isEqualTo(201);
+        var listed = http.exchange("/api/v1/reservations?restaurantId=" + id, HttpMethod.GET,
+                new HttpEntity<>(headers(first.token())), ReservationDTO[].class);
+        assertThat(listed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listed.getBody()).singleElement().satisfies(row ->
+                assertThat(row.getRestaurantId()).isEqualTo(id));
+        var notice = http.exchange("/api/v1/notifications", HttpMethod.GET,
+                new HttpEntity<>(headers(first.token())), String.class);
+        assertThat(notice.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(notice.getBody()).contains("Nueva solicitud de reserva");
         jdbc.update("INSERT INTO analiticas_restaurante (restaurante_id, fecha) VALUES (?,CURRENT_DATE)", id);
         jdbc.update("INSERT INTO horarios_restaurante (restaurante_id,dia_semana) VALUES (?,0)", id);
         jdbc.update("INSERT INTO promociones_restaurante (restaurante_id,titulo,valor_descuento,fecha_inicio,fecha_fin) VALUES (?,'Fixture',1,CURRENT_DATE,CURRENT_DATE)", id);

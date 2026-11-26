@@ -1,7 +1,6 @@
 package co.edu.umb.foodies.backend.repository;
 
 import co.edu.umb.foodies.backend.model.Post;
-import co.edu.umb.foodies.backend.model.User;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -14,8 +13,16 @@ import java.util.Optional;
 
 @Repository
 public interface PostRepository extends JpaRepository<Post, String> {
-    List<Post> findByUserOrderByCreatedAtDesc(User user);
-    List<Post> findAllByOrderByCreatedAtDesc();
+    @Query("""
+            select p from Post p join fetch p.user author left join fetch p.images
+            where p.deletedAt is null and author.isActive = true and author.emailVerified = true
+              and ((p.isPublic = true and p.status = :publicStatus) or author.id = :viewerId)
+              and (:authorId is null or author.id = :authorId)
+            order by p.createdAt desc
+            """)
+    List<Post> findVisibleFeed(String authorId, String viewerId, Post.PostStatus publicStatus);
+
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Post p where p.id = :id")
     Optional<Post> findByIdForUpdate(String id);

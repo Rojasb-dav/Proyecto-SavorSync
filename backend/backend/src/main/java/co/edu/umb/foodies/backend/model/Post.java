@@ -68,6 +68,7 @@ public class Post {
     private LocalDateTime updatedAt;
 
     @OneToMany(mappedBy = "post", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
+    @OrderBy("orderIndex ASC, id ASC")
     @Builder.Default
     private List<PostImage> images = new ArrayList<>();
 

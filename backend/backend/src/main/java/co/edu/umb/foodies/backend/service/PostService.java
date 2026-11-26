@@ -24,9 +24,11 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import static java.util.stream.Collectors.toMap;
 
 @Service
 @RequiredArgsConstructor
@@ -42,20 +44,40 @@ public class PostService {
 
     @Transactional(readOnly = true)
     public List<PostDTO> getAllPosts(String currentUserId) {
-        return postRepository.findAllByOrderByCreatedAtDesc().stream()
-                .filter(post -> canView(post, currentUserId))
-                .map(post -> convertToDTO(post, currentUserId))
-                .collect(Collectors.toList());
+        return readFeed(null, currentUserId);
     }
 
     @Transactional(readOnly = true)
     public List<PostDTO> getUserPosts(String userId, String currentUserId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return postRepository.findByUserOrderByCreatedAtDesc(user).stream()
-                .filter(post -> canView(post, currentUserId))
-                .map(post -> convertToDTO(post, currentUserId))
-                .collect(Collectors.toList());
+        if (!userRepository.existsById(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado");
+        }
+        return readFeed(userId, currentUserId);
+    }
+
+    private List<PostDTO> readFeed(String authorId, String viewerId) {
+        List<Post> posts = postRepository.findVisibleFeed(authorId, viewerId, Post.PostStatus.publicada);
+        if (posts.isEmpty()) return List.of();
+
+        List<String> restaurantIds = posts.stream().map(Post::getRestaurantId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<String, Restaurant> restaurants = restaurantRepository.findAllById(restaurantIds).stream()
+                .filter(PostService::isPublicRestaurant)
+                .collect(toMap(Restaurant::getId, restaurant -> restaurant));
+        Set<String> likedPostIds = viewerId == null ? Set.of() : Set.copyOf(likeRepository.findLikedPostIds(
+                viewerId, posts.stream().map(Post::getId).toList()));
+        List<String> postsWithoutCount = posts.stream().filter(post -> post.getLikesCount() == null)
+                .map(Post::getId).toList();
+        Map<String, Long> counts = postsWithoutCount.isEmpty() ? Map.of() :
+                likeRepository.countByPostIds(postsWithoutCount).stream()
+                        .collect(toMap(LikeRepository.PostLikeCount::getPostId, LikeRepository.PostLikeCount::getTotal));
+
+        return posts.stream().map(post -> {
+            int likes = post.getLikesCount() != null
+                    ? post.getLikesCount() : counts.getOrDefault(post.getId(), 0L).intValue();
+            Restaurant restaurant = post.getRestaurantId() == null ? null : restaurants.get(post.getRestaurantId());
+            return toDTO(post, restaurant, likes, likedPostIds.contains(post.getId()));
+        }).toList();
     }
 
     @Transactional
@@ -107,7 +129,9 @@ public class PostService {
                     "La imagen no pertenece a tu cuenta o ya está asociada a otro recurso.");
         }
 
-        return convertToDTO(post, user.getId());
+        Restaurant restaurant = restaurantId == null ? null :
+                restaurantRepository.findById(restaurantId).filter(PostService::isPublicRestaurant).orElse(null);
+        return toDTO(post, restaurant, 0, false);
     }
 
     private String resolveRestaurantId(PostDTO dto) {
@@ -127,12 +151,8 @@ public class PostService {
     @Transactional(readOnly = true)
     public List<CommentDTO> getComments(String postId, String viewerId) {
         requireVisiblePost(postId, viewerId);
-        return comments.findByPostId(postId).stream()
-                .filter(comment -> "activo".equals(comment.getStatus()))
-                .map(comment -> userRepository.findById(comment.getClienteId())
-                        .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
-                        .map(user -> CommentDTO.from(comment, user)).orElse(null))
-                .filter(Objects::nonNull)
+        return comments.findActiveWithAuthor(postId).stream()
+                .map(row -> CommentDTO.from(row.getComment(), row.getAuthor()))
                 .toList();
     }
 
@@ -255,18 +275,12 @@ public class PostService {
         }
     }
 
-    private PostDTO convertToDTO(Post post, String currentUserId) {
-        int likesCount = (post.getLikesCount() != null) ? post.getLikesCount() : (int) likeRepository.countByPostId(post.getId());
-        boolean likedByMe = currentUserId != null && likeRepository.existsByPostIdAndClienteId(post.getId(), currentUserId);
+    private static boolean isPublicRestaurant(Restaurant restaurant) {
+        return restaurant.getStatus() == Restaurant.RestaurantStatus.activo && restaurant.getDeactivatedAt() == null;
+    }
 
-        Restaurant rest = null;
-        if (post.getRestaurantId() != null) {
-            rest = restaurantRepository.findById(post.getRestaurantId())
-                    .filter(found -> found.getStatus() == Restaurant.RestaurantStatus.activo)
-                    .orElse(null);
-        }
-
-        String img = (post.getImages() != null && !post.getImages().isEmpty()) ? post.getImages().get(0).getUrl() : null;
+    private static PostDTO toDTO(Post post, Restaurant rest, int likesCount, boolean likedByMe) {
+        String img = post.getImages().isEmpty() ? null : post.getImages().get(0).getUrl();
 
         return PostDTO.builder()
                 .id(post.getId())

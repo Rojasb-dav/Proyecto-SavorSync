@@ -27,7 +27,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-mail'
-    implementation 'com.cloudinary:cloudinary-http44:1.38.0'
+    implementation('com.cloudinary:cloudinary-http44:1.38.0') {
+        exclude group: 'commons-logging', module: 'commons-logging'
+    }
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     implementation 'com.mysql:mysql-connector-j'
     implementation 'org.flywaydb:flyway-core'

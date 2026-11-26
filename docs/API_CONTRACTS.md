@@ -9,7 +9,7 @@ Flutter Web y Android comparten la base `/api/v1`, configurada mediante `API_BAS
 | POST `/auth/register` | Entrada `RegisterRequest`. 202 `RegistrationResponse` con `verificationRequired`, `challengeId`, `expiresInMs` y `requestedRole`. No crea sesión. | Público. sólo `foodie` y solicitud `restaurant_admin`. El tipo solicitado se conserva separado del rol efectivo. |
 | POST `/auth/email/verification` | Reenvío validado. 202 `RegistrationResponse`. | Público y limitado por identidad/origen. No devuelve el código. |
 | POST `/auth/email/verify` | `EmailVerificationRequest` con desafío y seis dígitos. AuthResponse sólo tras verificar y persistir sesión. | Público. 400 para inválido/expirado. código de un solo uso. |
-| POST `/auth/login` | Credenciales. 200 AuthResponse con Bearer y expiración positiva. | Cuenta activa y correo verificado. usuario no verificado recibe 403 sin sesión. |
+| POST `/auth/login` | Credenciales. 200 AuthResponse con Bearer y expiración positiva. | Cuenta activa y correo verificado. Una contraseña de más de 72 bytes UTF-8 se rechaza con 401 antes de BCrypt. Una cuenta sin verificar recibe 403 sin sesión. |
 | POST `/auth/forgot-password` | `ForgotPasswordRequest`. 202 con mensaje genérico. | Público. no confirma si la cuenta existe. |
 | POST `/auth/reset-password` | `ResetPasswordRequest` con email, código y contraseña nueva. 200, 400 si el desafío no es válido. | Código PASSWORD_RESET de un solo uso. revoca sesiones de esa identidad. |
 | POST `/auth/restaurant-admin/request` | Descripción validada. 202 con solicitud PQRS. | Foodie activo y verificado, incluso si se registró como Foodie. Actualiza el tipo solicitado y reutiliza la solicitud pendiente. La aprobación del establecimiento es un proceso separado. |

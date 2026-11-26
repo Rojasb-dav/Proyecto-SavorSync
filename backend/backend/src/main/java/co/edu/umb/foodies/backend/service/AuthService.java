@@ -85,6 +85,9 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest req, HttpServletRequest httpReq) {
+        if (req.getPassword().getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_BYTES) {
+            throw invalidCredentials();
+        }
         String email = normalizeEmail(req.getEmail());
         User user = userRepository.findByEmail(email).orElse(null);
         Employee employee = employeeRepository.findByEmail(email).orElse(null);
