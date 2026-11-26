@@ -2,6 +2,34 @@
 
 Registro de cambios, decisiones y resultados de verificación de SavorSync. El [README](README.md) describe el estado vigente. Las cifras siguientes provienen de los informes de cada iteración.
 
+## 2026-11-26 · V3.5-A.1 · Correcciones de auditoría
+
+Se reforzó V3.5-A sobre la misma base V3.4. El guard de Spring Boot comprueba las fuentes externas antes de procesar JSON o imports y valida los perfiles efectivos antes del contexto. El entrypoint fija la configuración del classpath, conserva la CA obligatoria y detecta los nombres con puntos que el intérprete podría descartar. La URL productiva sigue limitada a `savorsync_v34_validation` y `defaultdb` conserva su condición histórica. V1–V6, el Dockerfile y las dependencias quedaron intactos.
+
+| Verificación | Resultado |
+|---|---|
+| Bytes y atributos | La inspección hexadecimal confirmó que ambos scripts comienzan por `23 21`, decodifican como UTF-8 estricto y conservan LF sin BOM. La comprobación inicial con `StartsWith` produjo un falso positivo por comparación cultural. Los caracteres descompuestos eran un problema de visualización de la consola. `.gitattributes` fija LF para `*.sh` y `gradlew`. |
+| Gradle, JAR y Java | Build correcto. 105 pruebas aprobadas en 18 XML JUnit, 0 fallidas, 0 errores y 0 omitidas. Las 22 pruebas del guard ejecutan Spring Boot y comprueban la configuración efectiva de Hikari, los perfiles, las fuentes externas y el rechazo antes del contexto. |
+| Entrypoint | 41 comprobaciones aprobadas en la imagen final, incluidas las 35 previas. |
+| Docker y MySQL 8.4.13 aislado | Imagen `savorsync-backend:v35a1-local` compilada. Perfil `production` con dos sesiones TLS al destino permitido. Health, restaurantes y publicaciones 200. Reservas anónimas 401. Flyway desactivado en producción. |
+| Rechazos reales | JSON, URL de Hikari, modo TLS mediante nombre con puntos, truststore, Flyway, Hibernate, configuración externa, CA ausente o inválida y activación alternativa de producción rechazados. Un nombre DNS incompatible provocó un fallo de verificación de identidad. |
+| Bootstrap y secretos | El flujo sin consola falló de forma controlada. La versión con consola creó una cuenta sintética `admin_sistema` con correo sin verificar. Las contraseñas de prueba no aparecieron en la salida comprobada ni en los argumentos del proceso Java de producción. |
+
+La auditoría confirmó Aiven MySQL 8.4.11 en el puerto `28223`, `partial_revokes=ON` y el aislamiento de esquemas por conexiones reales. `savorsync_backend` queda asociado a `defaultdb`, `savorsync_v34_backend` al servicio definitivo y `savorsync_v34_migration@%` permanece como definidor de los 31 triggers. `avnadmin` se reserva para administración del servicio. El corte productivo requiere aprobación y confirmar en Render la URL, la cuenta, el secreto, la CA y la retirada de variables heredadas incompatibles. P0 sigue abierto. [Configuración admitida](docs/INFRASTRUCTURE_CONFIGURATION.md#configuración-admitida-en-producción) · [Despliegue y reversión](docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md)
+
+## 2026-11-26 · V3.5-A · Preparación de producción
+
+Base V3.4 [`0362511`](https://github.com/Rojasb-dav/Proyecto-SavorSync/commit/03625119894ac8ecb60eb016db79e9defa68dd89). El entrypoint de producción exige un único host, puerto explícito y el esquema `savorsync_v34_validation`. Fija la URL validada para Spring Boot y Hikari y mantiene `ddl-auto=validate`, Flyway desactivado y `VERIFY_IDENTITY` con CA obligatoria y PKCS12. `defaultdb` se reserva como histórico. Las migraciones V1–V6 y las dependencias conservan sus versiones.
+
+| Evidencia | Resultado |
+|---|---|
+| Aiven MySQL 8.4.11, reportado por el propietario | V1–V6 aplicadas, 27 tablas, 35 claves foráneas, 31 triggers y 26 tablas funcionales inicialmente vacías. Pruebas transaccionales, JDBC TLS, HTTP y aislamiento entre esquemas correctos. |
+| Backend | 83 pruebas aprobadas en 17 XML JUnit. Cero fallos, errores u omisiones. JAR generado con Gradle y Java 17. El primer `clean` encontró archivos de build en uso en Windows. `build --rerun-tasks` completó la recompilación y la regresión. |
+| Validación del entrypoint | 35 comprobaciones aprobadas en la imagen final. Los casos válidos alcanzan la comprobación de CA. Los casos inválidos se rechazan antes de iniciar Java, sin imprimir la URL. Desde `backend/backend`, ejecutar `sh src/test/sh/docker-entrypoint-test.sh` en Linux sin una CA de producción montada. |
+| Docker Linux y MySQL 8.4.13 aislado | Imagen `savorsync-backend:v35a-local` compilada. V1–V6 se aplicaron por TLS con una cuenta separada. El perfil `production` arrancó con la cuenta de aplicación. Health, restaurantes y publicaciones devolvieron 200. Reservas sin autenticación devolvió 401. MySQL registró dos sesiones de la aplicación con cifrado TLS en el esquema esperado. El alias DNS ajeno al certificado terminó con código 1 por verificación de identidad fallida. Flyway permaneció desactivado en el arranque de producción. |
+
+La validación local se realizó en contenedores nuevos. Flyway emitió su aviso de compatibilidad declarada para MySQL 8.4 y las seis migraciones se completaron. Queda la aprobación del propietario y la comprobación del entorno definitivo durante el corte. Si se requiere revertir, restaurar el servicio con una imagen compatible con el esquema definitivo y preservar sus escrituras. [Despliegue y reversión](docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md)
+
 ## 2026-11-26 · V3.4 · Integridad referencial
 
 Base [`ef2ef6a`](https://github.com/Rojasb-dav/Proyecto-SavorSync/commit/ef2ef6a1b680974a27b7655077a960ba805da5ed), sobre la entrega funcional [`7c9879b1`](https://github.com/Rojasb-dav/Proyecto-SavorSync/commit/7c9879b18e5c874e99f30a097169c57a7c005621). Se aprueba instalar con tablas limpias y conservar exclusivamente en el respaldo histórico los registros de prueba de las primeras versiones. El propietario reportó checksum SHA256 y restauración privada comprobada en MySQL 8.4.13. Esa instancia no formó parte de esta iteración.

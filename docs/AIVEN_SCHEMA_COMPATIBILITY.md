@@ -1,4 +1,6 @@
-# Compatibilidad del esquema parcial de Aiven
+# Compatibilidad histórica del esquema parcial de Aiven
+
+Este documento conserva la evaluación de la copia estricta de V3.3. En V3.5-A, `defaultdb` permanece como base histórica y el destino de producción es `savorsync_v34_validation`. Consultar el [runbook vigente](PRODUCTION_MIGRATION_RUNBOOK.md).
 
 Se inspeccionó el archivo estructural autorizado. Contiene doce CREATE TABLE de InnoDB y ningún INSERT, REPLACE, UPDATE, DELETE ni LOAD DATA. La cabecera declara MySQL 8.4.11 y defaultdb. No se inspeccionó el respaldo con datos ni se abrió una conexión a Aiven. La comparación se hizo con el DDL académico, Flyway V1–V5, los tipos JPA ajustados en V3.2 y los repositorios y consultas de identidad, recuperación y recursos.
 
@@ -25,4 +27,4 @@ Las 22 definiciones de tabla y 22 triggers de schema_foodies_db.sql coinciden co
 
 Inicializar una base nueva con V1–V5 y comprobar el historial. Restaurar el origen como copia de solo lectura lógica en un esquema separado. Ejecutar [copy-partial-schema.sql](../backend/backend/ops/copy-partial-schema.sql) en una sola conexión de cliente por lotes. La copia usa una transacción, modo SQL estricto y restricciones activas. No usa baselines sobre el esquema parcial, IGNORE, upserts ni deshabilita FK. El usuario de copia debe tener los permisos de lectura y escritura en los esquemas correspondientes y CREATE TEMPORARY TABLES. Los conflictos deben resolverse en la copia a través de decisiones auditadas. La versión de prueba 8.4.13 difiere de 8.4.11 de Aiven.
 
-La operación de corte sobre defaultdb requiere aprobación independiente y el respaldo verificado del propietario. El procedimiento está en [PRODUCTION_MIGRATION_RUNBOOK.md](PRODUCTION_MIGRATION_RUNBOOK.md).
+La copia estricta queda disponible para ensayos aislados. El [procedimiento vigente de corte](PRODUCTION_MIGRATION_RUNBOOK.md) conserva `defaultdb` bajo custodia histórica.

@@ -1,0 +1,3 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+  co.edu.umb.foodies.backend.config.ProductionEnvironmentGuard$BeforeConfig,\
+  co.edu.umb.foodies.backend.config.ProductionEnvironmentGuard
